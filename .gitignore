@@ -1,3 +1,6 @@
 /backup/
 /base_class/__pycache__/
 /template_files/*
+!/template_files/.gitkeep
+/generate_files/*
+!/generate_files/.gitkeep
