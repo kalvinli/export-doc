@@ -1,2 +1,3 @@
-backup/
-base_class/__pycache__
+/backup/
+/base_class/__pycache__/
+/template_files/*
