@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>上传文档模板</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f2f2f2;
+            padding: 20px;
+        }
+     
+        .upload-container {
+            max-width: 400px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            text-align: center;
+        }
+
+        .auth-input {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+     
+        .upload-input {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+     
+        .upload-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            font-size: 16px;
+            color: #fff;
+            background-color: #3F51B5;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            width: 200px;
+    
+        }
+     
+        .upload-btn:hover {
+            background-color: #2196F3;
+        }
+
+
+    </style>
+</head>
+<body>
+    <div class="upload-container">
+        <!-- 富文本编辑器容器 -->
+        <div id="editor-container"></div>
+        <form id="fileUploadForm" action="/upload_template" method="post" enctype="multipart/form-data">
+            多维表格授权码：<input type="text" class="auth-input" id="personal_token" name="personal_token" value="">
+            模板文件：<input type="file" class="upload-input" id="filePicker" name="filePicker" accept=".docx">
+            <input class="upload-btn" type="submit" value="上传模板文件">
+        </form>
+    </div>
+    <script>
+        // 页面加载时检查本地缓存
+        window.onload = function () {
+            const personalTokenInput = document.getElementById('personal_token');
+            const savedToken = localStorage.getItem('personal_token');
+            if (savedToken) {
+                personalTokenInput.value = savedToken;
+            }
+        };
+
+        document.getElementById('fileUploadForm').addEventListener('submit', function(event) {
+            const personalToken = document.getElementById('personal_token').value;
+            const filePicker = document.getElementById('filePicker').files[0];
+
+            if (personalToken === '') {
+                alert('多维表格授权码不能为空！');
+                event.preventDefault();
+
+            } else if (!filePicker) {
+                alert('模板文件不能为空！');
+                event.preventDefault();
+
+            } else {
+                // 表单提交成功时，将授权码保存到本地缓存
+                localStorage.setItem('personal_token', personalToken);
+            }
+        });
+
+    </script>
+</body>    
+</html>
