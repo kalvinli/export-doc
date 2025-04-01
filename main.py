@@ -20,7 +20,7 @@ app.json.ensure_ascii = False
 # 当前脚本的目录
 fp = os.path.dirname(os.path.abspath(__file__))  
 
-# #定义文件的保存路径和文件名尾缀
+## 定义文件的保存路径和文件名尾缀
 UPLOAD_FOLDER = os.path.join(fp, 'template_files')
 # ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 ALLOWED_EXTENSIONS = {'docx'}
@@ -36,9 +36,10 @@ app.config['GENERATE_FOLDER'] = GENERATE_FOLDER
 # formatted_local_time = time.strftime('%Y-%m-%d %H:%M:%S', local_time)
 # formatted_local_time = time.strftime('%Y-%m-%d', local_time)
 
-## 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当然记录的附件中
+## 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件中
 def export_to_doc(app_token, personal_token, table_id, record_id, json, file_name, file_field, field_id_map, file_type):
 
+    msg = "生成附件成功"
     info_json = json
     # print(info_json)
     # print("*"*30)
@@ -48,10 +49,12 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
     template_file_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token, "template.docx")
     # print(template_file_path)
 
-    # target_file_path = os.path.join(fp, info_json["姓名"] + ".docx")
     target_file_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token, file_name+ ".docx")
     # print(target_file_path)
     image_file_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token, file_name+ ".jpg")
+
+    if os.path.isfile(template_file_path):
+        return "模板文件不存在，请先上传模板文件"
 
     if os.path.isfile(target_file_path):
         os.remove(target_file_path)
@@ -299,6 +302,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
 
             except Exception as e:
                 print("当前系统未安装Office软件，PDF转换失败")
+                msg = "当前系统未安装Office软件，PDF转换失败"
                 convert_flag = False
 
         elif system == 'Linux':
@@ -316,21 +320,24 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
                 
             except subprocess.CalledProcessError as e:
                 print("当前系统未安装LibreOffice软件，PDF转换失败")
+                msg = "当前系统未安装LibreOffice软件，PDF转换失败"
 
                 try:
                     # 更新包列表并安装LibreOffice
-                    subprocess.run(["sudo", "apt-get", "update"], check=True)
-                    subprocess.run(["sudo", "apt-get", "install", "libreoffice", "-y"], check=True)
+                    subprocess.run(["sudo", "apt", "update"], check=True)
+                    subprocess.run(["sudo", "apt", "install", "libreoffice", "-y"], check=True)
 
                     try:
                         subprocess.run(command, check=True)
                         
                     except subprocess.CalledProcessError as e:
                         print("PDF转换失败")
+                        msg = "PDF转换失败"
                         convert_flag = False
 
                 except subprocess.CalledProcessError as e:
                     print("安装LibreOffice软件失败")
+                    msg = "安装LibreOffice软件失败"
                     convert_flag = False
 
                 # print(f"Linux 系统转换出错: {e}")
@@ -385,6 +392,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
         response = BaseClass().batch_update_record(app_token, personal_token, table_id, record_list)
         # print(response)
         if response.get("code") == 0:
+            msg = "生成附件成功"
             if os.path.isfile(target_file_path):
                 file.close()
                 try:
@@ -395,6 +403,8 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
                     os.remove(pdf_target_file_path)
                 except Exception as e:
                     pass
+
+    return msg
 
 
 
@@ -506,11 +516,13 @@ def generate_attachment():
 
             field_list[key] = field_value
         
+        try:
+            msg = export_to_doc(request_body.get("app_token"), request_body.get("personal_base_token"), request_body.get("table_id"), request_body.get("record_id"), field_list, request_body.get("file_name"), request_body.get("file_field"), field_id_map, request_body.get("file_type", None))
+            # result_msg = "生成附件成功"
+            result_msg = msg
 
-        export_to_doc(request_body.get("app_token"), request_body.get("personal_base_token"), request_body.get("table_id"), request_body.get("record_id"), field_list, request_body.get("file_name"), request_body.get("file_field"), field_id_map, request_body.get("file_type", None))
-
-        
-        result_msg = "生成附件成功"
+        except Exception as e:
+            result_msg = "生成附件失败，请联系管理员查看日志"
 
     else:
         result_msg = "获取记录失败，请重试！"
