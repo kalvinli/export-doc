@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, request, render_template, send_file
-import os, json, shutil, time, uuid, re
+import os, platform, subprocess, json, shutil, time, uuid, re
 from requests_toolbelt import MultipartEncoder
 from docx import Document
 from docx.shared import Pt, Inches
@@ -288,18 +288,71 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
     if file_type == 'pdf':
         #获取文件名称
         filename=target_file_path.split(".docx")[0]
-        #将 docx文档转换为 PDF
-        convert(target_file_path, f"{filename}.pdf")
         pdf_target_file_path = f"{filename}.pdf"
+        system = platform.system()
+        convert_flag = True
+        
+        # 将 docx 文档转换为 PDF，如果转换失败，将上传 docx 文件到附件字段中
+        if system == 'Windows':
+            try:
+                convert(target_file_path, pdf_target_file_path)
 
-        file = (open(pdf_target_file_path, 'rb'))
-        req_body = {
-            "file_name": file_name + ".pdf",
-            "parent_type": "bitable_file",
-            "parent_node": app_token,
-            "size": str(os.path.getsize(pdf_target_file_path)),
-            "file": file
-        }
+            except Exception as e:
+                print("当前系统未安装Office软件，PDF转换失败")
+                convert_flag = False
+
+        elif system == 'Linux':
+            command = [
+                "libreoffice",
+                "--headless",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                pdf_target_file_path,
+                target_file_path
+            ]
+            try:
+                subprocess.run(command, check=True)
+                
+            except subprocess.CalledProcessError as e:
+                print("当前系统未安装LibreOffice软件，PDF转换失败")
+
+                try:
+                    # 更新包列表并安装LibreOffice
+                    subprocess.run(["sudo", "apt-get", "update"], check=True)
+                    subprocess.run(["sudo", "apt-get", "install", "libreoffice", "-y"], check=True)
+
+                    try:
+                        subprocess.run(command, check=True)
+                        
+                    except subprocess.CalledProcessError as e:
+                        print("PDF转换失败")
+                        convert_flag = False
+
+                except subprocess.CalledProcessError as e:
+                    print("安装LibreOffice软件失败")
+                    convert_flag = False
+
+                # print(f"Linux 系统转换出错: {e}")
+
+        if convert_flag == True:
+            file = (open(pdf_target_file_path, 'rb'))
+            req_body = {
+                "file_name": file_name + ".pdf",
+                "parent_type": "bitable_file",
+                "parent_node": app_token,
+                "size": str(os.path.getsize(pdf_target_file_path)),
+                "file": file
+            }
+        else:
+            file = (open(target_file_path, 'rb'))
+            req_body = {
+                "file_name": file_name + ".docx",
+                "parent_type": "bitable_file",
+                "parent_node": app_token,
+                "size": str(os.path.getsize(target_file_path)),
+                "file": file
+            }
 
     else:
         file = (open(target_file_path, 'rb'))
