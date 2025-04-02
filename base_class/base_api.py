@@ -352,6 +352,14 @@ class BaseClass(object):
     
     ###########################   调用 base 开放接口批量获取记录   ###########################
     def batch_get_records(self, app_token: str, personal_base_token : str, table_id: str, record_ids: list|None):
+        '''
+        调用 base 开放接口批量获取记录\r\n
+        params:\r\n
+        - app_token: 多维表格ID\r\n
+        - personal_base_token: 多维表格授权码\r\n
+        - table_id: 数据表ID\r\n
+        - record_ids: 记录ID列表\r\n
+        '''
     
         self._app_token = app_token
         self._personal_base_token = personal_base_token

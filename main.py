@@ -1,11 +1,13 @@
 from flask import Flask, jsonify, request, render_template, send_file
-import os, platform, subprocess, json, shutil, time, uuid, re
+import os, platform, subprocess, json
+import requests, shutil, time, uuid, re, base64
 from requests_toolbelt import MultipartEncoder
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.shared import RGBColor
 from werkzeug.utils import secure_filename
 from docx2pdf import convert
+from apscheduler.schedulers.background import BackgroundScheduler
 from base_class.base_api import BaseClass
 from base_class.generator import generate_qrcode, generate_barcode
 
@@ -21,7 +23,6 @@ fp = os.path.dirname(os.path.abspath(__file__))
 
 ## 定义模板文件的保存路径和文件名尾缀
 UPLOAD_FOLDER = os.path.join(fp, 'template_files')
-# ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 ALLOWED_EXTENSIONS = {'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -40,16 +41,17 @@ app.config['GENERATE_FOLDER'] = GENERATE_FOLDER
 ## 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中
 def export_to_doc(app_token, personal_token, table_id, record_id, info_json, file_name, file_field, field_id_map, file_type):
     '''
-        # 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中
-        app_token: 多维表格ID
-        personal_token: 多维表格授权码
-        table_id: 数据表ID
-        record_id: 记录ID
-        info_json: 字段名与字段值的映射
-        file_name: 导出成附件的文件名，默认设定为多维表格中某个字段中的值
-        file_field: 导出成附件后回传的附件字段名
-        field_id_map: 字段名与字段ID的映射
-        file_type: 导出文件类型，默认为docx，当前在linux环境下面部署后导出为pdf有问题
+        基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中\r\n
+        pramas:\r\n
+        - app_token: 多维表格ID\r\n
+        - personal_token: 多维表格授权码\r\n
+        - table_id: 数据表ID\r\n
+        - record_id: 记录ID\r\n
+        - info_json: 字段名与字段值的映射\r\n
+        - file_name: 导出成附件的文件名，默认设定为多维表格中某个字段中的值\r\n
+        - file_field: 导出成附件后回传的附件字段名\r\n
+        - field_id_map: 字段名与字段ID的映射\r\n
+        - file_type: 导出文件类型，默认为docx，当前在linux环境下面部署后导出为pdf有问题\r\n
     '''
     # print(info_json)
     # print("*"*30)
@@ -473,9 +475,9 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
 ## 判断文件名是否在允许的格式范围内
 def allowed_file(filename):
     """
-        检验文件名尾缀是否满足格式要求
-        :param filename:
-        :return:
+        检验文件名尾缀是否满足格式要求\r\n
+        :param filename:\r\n
+        :return:\r\n
     """
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -486,7 +488,7 @@ def delete_files_in_directory(directory):
     file_list = os.listdir(directory)
     for file_name in file_list:
         file_path = os.path.join(directory, file_name)
-        if os.path.isfile(file_path):
+        if os.path.isfile(file_path) and file_name != '.gitkeep':
             os.remove(file_path)
 
 
@@ -605,20 +607,56 @@ def generate_attachment():
     return {"msg": result_msg, "code": result_code}
 
 
+## 删除 template_files 目录下面生成的条形码和二维码文件接口
+@app.route("/clean_generate_files")
+def clean_generate_files():
+    file_path = app.config['GENERATE_FOLDER']
+    delete_files_in_directory(file_path)
+
+    print("template_files 目录下文件删除成功")
+    return {"code": 200, "msg": "文件删除成功"}
+
 
 ## 条形码和二维码下载接口，返回文件的二进制流
 @app.route("/download_file")
 def download_file():
     """
     下载template_files目录下面的文件
+    params:\r\n
+    - file_name: 指定要下载的文件名\r\n
+    - return_type: 指定返回的类型，不指定此参数默认为文件的二进制信息，可设置为 base64 生成图片的 base64 编码\r\n
     :return:
     """
+
+    # # 读取图片文件并编码为base64
+    # with open('path/to/your/image.png', 'rb') as image_file:
+    #     encoded_string = base64.b64encode(image_file.read())
+    # encoded_str = encoded_string.decode('utf-8')
+    # print("Encoded Image:", encoded_str)
+    
+    # # 解码base64字符串并保存为图片
+    # encoded_data = encoded_str.encode('utf-8')
+    # decoded_data = base64.b64decode(encoded_data)
+    # with open('path/to/save/image_decoded.png', 'wb') as decoded_file:
+    #     decoded_file.write(decoded_data)
+        
+
+    return_type = request.args.get("return_type", "file")
+
+
     file_name = request.args.get('file_name')
     file_path = os.path.join(fp, app.config['GENERATE_FOLDER'], file_name)
     if os.path.isfile(file_path):
-        return send_file(file_path,as_attachment=True)
+        if return_type == 'file':
+            return send_file(file_path,as_attachment=True)
+        elif return_type == 'base64':
+            with open(file_path, 'rb') as image_file:
+                encoded_string = base64.b64encode(image_file.read())
+            encoded_str = encoded_string.decode('utf-8')
+            # print("Encoded Image:", encoded_str)
+            return {"code": 200, "msg": "下载成功","data": "data:image/png;base64," + encoded_str}
     else:
-        return "The downloaded file does not exist"
+        return {"code": -1, "msg":"下载的文件不存在，请尝试重新生成"}
     
 
 
@@ -689,7 +727,7 @@ def barcode():
 
     server_url = request.headers.get("Host")
 
-    return 'https://' + server_url + '/download_file?file_name=' + result
+    return {"code": 200, "msg":"生成成功","data":'https://' + server_url + '/download_file?file_name=' + result}
 
 
 
@@ -730,7 +768,7 @@ def qrcode():
 
     server_url = request.headers.get("Host")
 
-    return 'https://' + server_url + '/download_file?file_name=' + result
+    return {"code": 200, "msg":"生成成功","data":'https://' + server_url + '/download_file?file_name=' + result}
 
 
 
@@ -740,6 +778,13 @@ def index():
     identifier = str(uuid.uuid1())
     return render_template("index.html", identifier=identifier)
 
+
+# 创建一个调度器
+scheduler = BackgroundScheduler()
+# 添加任务
+scheduler.add_job(clean_generate_files, 'cron', minute="*/5")
+# 启动调度器
+scheduler.start()
 
 
 if __name__ == "__main__":
