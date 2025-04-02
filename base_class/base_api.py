@@ -483,7 +483,7 @@ class BaseClass(object):
 
         
     ###########################   调用 base 开放接口下载多维表格中的附件   ###########################
-    def download_attachment(self, personal_base_token: str, file_token: str, extra: object):
+    def download_attachment(self, personal_base_token: str, file_token: str, extra: dict):
     
         self._personal_base_token = personal_base_token
 

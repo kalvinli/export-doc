@@ -13,20 +13,20 @@ from base_class.generator import generate_qrcode, generate_barcode
 
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
-# app.config['JSON_AS_ASCII'] = False
-# app.config['JSON_SORT_KEYS'] = False
+app.config['JSON_AS_ASCII'] = False
+app.config['JSON_SORT_KEYS'] = False
 app.json.ensure_ascii = False
 
 # 当前脚本的目录
 fp = os.path.dirname(os.path.abspath(__file__))  
 
-## 定义文件的保存路径和文件名尾缀
+## 定义模板文件的保存路径和文件名尾缀
 UPLOAD_FOLDER = os.path.join(fp, 'template_files')
 # ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 ALLOWED_EXTENSIONS = {'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-## 独立生成的二维码和条形保存路径
+## 独立生成二维码和条形码的保存路径
 GENERATE_FOLDER = os.path.join(fp, 'generate_files')
 app.config['GENERATE_FOLDER'] = GENERATE_FOLDER
 
@@ -36,35 +36,61 @@ app.config['GENERATE_FOLDER'] = GENERATE_FOLDER
 # formatted_local_time = time.strftime('%Y-%m-%d %H:%M:%S', local_time)
 # formatted_local_time = time.strftime('%Y-%m-%d', local_time)
 
-## 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件中
-def export_to_doc(app_token, personal_token, table_id, record_id, json, file_name, file_field, field_id_map, file_type):
-
-    msg = "生成附件成功"
-    info_json = json
+## 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中
+def export_to_doc(app_token, personal_token, table_id, record_id, info_json, file_name, file_field, field_id_map, file_type):
+    '''
+        # 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中
+        app_token: 多维表格ID
+        personal_token: 多维表格授权码
+        table_id: 数据表ID
+        record_id: 记录ID
+        info_json: 字段名与字段值的映射
+        file_name: 导出成附件的文件名，默认设定为多维表格中某个字段中的值
+        file_field: 导出成附件后回传的附件字段名
+        field_id_map: 字段名与字段ID的映射
+        file_type: 导出文件类型，默认为docx，当前在linux环境下面部署后导出为pdf有问题
+    '''
     # print(info_json)
     # print("*"*30)
+    # print(field_id_map)
+    # print("*"*30)
 
+    msg = "生成附件成功"
+
+    # 个人主目录
     main_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token)
+    # print(str(main_path))
+    # print("*"*30)
     
-    template_file_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token, "template.docx")
+    # 个人模板文件路径
+    template_file_path = os.path.join(main_path, "template.docx")
     # print(template_file_path)
 
-    target_file_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token, file_name+ ".docx")
+    # 个人生成的word文件路径
+    target_file_path = os.path.join(main_path, file_name + ".docx")
     # print(target_file_path)
-    image_file_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token, file_name+ ".jpg")
 
-    if os.path.isfile(template_file_path):
+    # 个人图片文件路径
+    image_file_path = os.path.join(main_path, file_name + ".jpg")
+
+    # 如果模板文件不存在，则直接返回
+    if not os.path.isfile(template_file_path):
+        print("模板文件不存在，请先上传模板文件")
         return "模板文件不存在，请先上传模板文件"
 
+    # 如果个人生成的word文件存在，则删除
     if os.path.isfile(target_file_path):
         os.remove(target_file_path)
 
+    # 如果个人图片文件存在，则删除
     if os.path.isfile(image_file_path):
         os.remove(image_file_path)
 
+    # 如果个人生成的word文件不存在，则从模板文件复制一个副本
     if not os.path.exists(target_file_path):
         shutil.copy(template_file_path, target_file_path)
 
+    # 基于个人生成word文件副本初始化一个文档实例
     doc = Document(target_file_path)
 
     ## 遍历文档中的所有文本段落
@@ -72,45 +98,66 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
         # for run in paragraph.runs:
         #   print(run.text)
         index = 0
+        # 根据获取段落文本，遍历字段名列表进行占位字符的替换
         for key, value in info_json.items():
+            # print(key, value)
+
+            # 判断段落文本中是否包含有`{{字段名` 这样的信息，如果存在，则表示存在占位符否则不处理当前段落文本
             if '{{' + key in paragraph.text:
                 # print(key, paragraph.text)
-                font_size = paragraph.runs[index].font.size  # 假设所有格式相同，这里仅取第一个run的格式
-                color = paragraph.runs[index].font.color.rgb  # 保存颜色，如果有的话
-                bold = paragraph.runs[index].font.bold is not None  # 保存粗体状态
-                italic = paragraph.runs[index].font.italic is not None  # 保存斜体状态
 
+                # 遍历段落中的所有文本片断
                 for run in paragraph.runs:
+
+                    # 判断文本片断中是否包含有`{{字段名` 这样的信息，如果存在，则表示存在占位符
                     if '{{' + key in run.text:
-                        # print(key, run.text)
-                        # 应用之前保存的格式
+                        print(key, run.text)
+                        
+                        # 获取当前文本片断的样式，当前只处理字体大小、颜色、加粗和斜体四种样式
+                        font_size = run.font.size  # 假设所有格式相同，这里仅取第一个run的格式
+                        color = run.font.color.rgb  # 保存颜色，如果有的话
+                        bold = run.font.bold is not None  # 保存粗体状态
+                        italic = run.font.italic is not None  # 保存斜体状态
+                        
+                        # 根据占位符格式对文本片断进行替换
                         try:
+                            # 如果占位符包含有`:image`，替换占位符为图片
                             if ":image" in run.text:
+                                # 将文本片断中的`{{`和`}}`替换为空，保留有用信息
                                 run_text = run.text.replace("{{","").replace("}}","")
+                                # 将以上信息用`:`分割，生成列表
                                 key_split = run_text.split(":")
                                 key = key_split[0]
+                                # 如果列表的长度为3，则以上信息中包含有图片尺寸
                                 if len(key_split) == 3:
+                                    # 对图片尺寸进行分割后并进行变量赋值
                                     size = key_split[2].split("*")
                                     width = float(size[0])
                                     height = float(size[1])
+
+                                # 如果列表的长度不为3，则以上信息中不包含有图片尺寸，则不处理图片大小
                                 else:
                                     width = None
                                     height = None
                                     
-                                extra = {"bitablePerm":{"tableId":table_id,"attachments":{field_id_map[key]:{record_id:[info_json[key]]}}}}
-                                attachment_resp = BaseClass().download_attachment(personal_token, info_json[key], extra)
+                                # 生成多维表格附件下载的extra信息，并进行附件下载，返回附件文件的二进制流信息
+                                extra = {"bitablePerm":{"tableId":table_id,"attachments":{field_id_map[key]:{record_id:[value]}}}}
+                                attachment_resp = BaseClass().download_attachment(personal_token, value, extra)
                                 # print(attachment_resp)
 
+                                # 将二进制流信息写入到个人生成的图片附件中
                                 with open(image_file_path, 'wb') as file:
                                     file.write(attachment_resp.content)
                                 file.close()
 
+                                # 将图片替换到图片占位符所在位置，并把原有的占位符文本置为空
                                 try:
                                     paragraph.add_run().add_picture(image_file_path, width=Inches(width), height=Inches(height))
                                 except Exception as e:
                                     paragraph.add_run().add_picture(image_file_path)
                                 run.text = ""
 
+                            # 如果占位符包含有`:barcode`，替换占位符为条形码
                             elif ":barcode" in run.text:
                                 run_text = run.text.replace("{{","").replace("}}","")
                                 key_split = run_text.split(":")
@@ -123,15 +170,18 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
                                     width = None
                                     height = None
                                     
-                                barcode_file_name = generate_barcode(info_json[key], 'code128', None, main_path)
+                                # 调用接口生成条形码，默认为模板文件相同路径，并以当前字段的值作为文件名，默认使用`code128`的样式，并重新设定条形码的文件路径
+                                barcode_file_name = generate_barcode(value, 'code128', None, main_path)
                                 barcode_file_path = os.path.join(main_path, barcode_file_name)
 
+                                # 将条形码替换到条形码占位符所在位置，并把原有的占位符文本置为空
                                 try:
                                     paragraph.add_run().add_picture(barcode_file_path, width=Inches(width), height=Inches(height))
                                 except Exception as e:
                                     paragraph.add_run().add_picture(barcode_file_path)
-                                run.text = ""
+                                run.text = "" 
 
+                            # 如果占位符包含有`:qrcode`，替换占位符为二维码
                             elif ":qrcode" in run.text:
                                 run_text = run.text.replace("{{","").replace("}}","")
                                 key_split = run_text.split(":")
@@ -144,21 +194,26 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
                                     width = None
                                     height = None
                                     
-                                qrcode_file_name = generate_qrcode(info_json[key], {}, main_path)
+                                # 调用接口生成二维码，默认为模板文件相同路径，并以当前字段的值作为文件名，默认使用`code128`的样式，并重新设定条形码的文件路径
+                                qrcode_file_name = generate_qrcode(value, {}, main_path)
                                 qrcode_file_path = os.path.join(main_path, qrcode_file_name)
 
+                                # 将二维码替换到二维码占位符所在位置，并把原有的占位符文本置为空
                                 try:
                                     paragraph.add_run().add_picture(qrcode_file_path, width=Inches(width), height=Inches(height))
                                 except Exception as e:
                                     paragraph.add_run().add_picture(qrcode_file_path)
                                 run.text = ""
 
+                            # 如果不是以上三种情况，则直接替换为对应字段的值
                             else:
-                                run.text = run.text.replace("{{"+ key + "}}", info_json[key], 1)
+                                run.text = run.text.replace("{{"+ key + "}}", value, 1)
 
+                        # 如果替换失败，则将当前文本片断置为空，继续后面的执行
                         except Exception as e:
                             run.text = ""
                             
+                        # 应用之前保存的样式
                         if font_size:  # 如果存在字体大小，设置字体大小
                             run.font.size = Pt(font_size.pt)
                         if color:  # 如果存在颜色，则设置颜色
@@ -167,9 +222,10 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
                             run.font.bold = bold
                         if italic:  # 如果存在斜体，则设置斜体
                             run.font.italic = italic
-                        break  # 只关注第一个出现的占位符
+                        break  # 只考虑第一个出现的占位符
                 
                 index = index + 1
+
 
     ## 遍历文档中的所有表格
     for table in doc.tables:
@@ -279,8 +335,8 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
                                     run.font.bold = bold
                                 if italic:  # 如果存在斜体，则设置斜体
                                     run.font.italic = italic
-                                # break  # 因为我们只关心第一个出现的占位符，所以找到后退出循环
                                 text_tmp = ""
+                                break  # 因为我们只处理第一个出现的占位符，所以找到后退出循环
                             else:
                                 run.text = ""
                                 
@@ -361,6 +417,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
                 "file": file
             }
 
+    # 如果 file_type 不为 `pdf` 时执行以下代码
     else:
         file = (open(target_file_path, 'rb'))
         req_body = {
@@ -373,6 +430,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
 
 
     multi_form = MultipartEncoder(req_body)
+    # 上传附件到多维表格空间
     response = BaseClass().upload_all(personal_token, multi_form)
     # print(response)
     file.close()
@@ -389,10 +447,13 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
 
         # print(record_list)
 
+        # 更新多维表格记录
         response = BaseClass().batch_update_record(app_token, personal_token, table_id, record_list)
         # print(response)
         if response.get("code") == 0:
             msg = "生成附件成功"
+
+            # 附件更新成功后，将模板目录中的临时文件全部删除
             if os.path.isfile(target_file_path):
                 file.close()
                 try:
@@ -410,9 +471,9 @@ def export_to_doc(app_token, personal_token, table_id, record_id, json, file_nam
 
 def allowed_file(filename):
     """
-    检验文件名尾缀是否满足格式要求
-    :param filename:
-    :return:
+        检验文件名尾缀是否满足格式要求
+        :param filename:
+        :return:
     """
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -531,7 +592,7 @@ def generate_attachment():
     return {"msg": result_msg, "code": result_code}
 
 
-
+## 条形码和二维码下载接口
 @app.route("/download_file")
 def download_file():
     """
@@ -555,6 +616,7 @@ def delete_files_in_directory(directory):
             os.remove(file_path)
 
 
+## 生成条形码接口，返回下载链接
 @app.route('/generate_barcode', methods=['POST'])
 def barcode():
 
@@ -580,6 +642,20 @@ def barcode():
     # "gs1_128": Gs1_128,
     # "codabar": CODABAR,
     # "nw-7": CODABAR,
+    
+    '''
+    # POST 请求体参数格式如下：
+    {
+        "barcode_class": "code128",
+        "options": {
+            "module_width": 0.3,
+            "module_height": 15.0,
+            "font_size": 10,
+            "text_distance": 5.0,
+            "quiet_zone": 10.5
+        }
+    }
+    '''
 
     request_body = {}
 
@@ -587,7 +663,7 @@ def barcode():
         request_body = json.loads(request.data.decode("utf-8"))
 
     except Exception as e:
-        pass
+        return '请求参数格式错误'
 
     # print(request_body)
 
@@ -610,16 +686,28 @@ def barcode():
     return 'https://' + server_url + '/download_file?file_name=' + result
 
 
-
+## 生成二维码接口，返回下载链接
 @app.route('/generate_qrcode', methods=['POST'])
 def qrcode():
+
+    '''
+    # POST 请求体参数格式如下：
+    {
+        "version": 2,
+        "error_correction": "ERROR_CORRECT_H",
+        "box_size": 12,
+        "border": 2,
+        "fill_color": "green",
+        "back_color":"white"
+    }
+    '''
 
     request_body = {}
     try:
         request_body = json.loads(request.data.decode("utf-8"))
 
     except Exception as e:
-        pass
+        return '请求参数格式错误'
 
     # print(request_body)
 
@@ -638,14 +726,12 @@ def qrcode():
     return 'https://' + server_url + '/download_file?file_name=' + result
 
 
-
+## 插件主页，用于上传模板文件
 @app.route('/', methods=['GET'])
 def index():
     identifier = str(uuid.uuid1())
-
     return render_template("index.html", identifier=identifier)
 
 
-
-
-app.run(host='0.0.0.0', port=3300, debug=True, use_reloader=True)
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=3300, debug=True, use_reloader=True)
