@@ -485,11 +485,15 @@ def allowed_file(filename):
 
 ## 删除指定路径下面的所有文件
 def delete_files_in_directory(directory):
-    file_list = os.listdir(directory)
-    for file_name in file_list:
-        file_path = os.path.join(directory, file_name)
-        if os.path.isfile(file_path) and file_name != '.gitkeep':
-            os.remove(file_path)
+    try:
+        file_list = os.listdir(directory)
+        file_list.remove(".gitkeep")
+        for file_name in file_list:
+            file_path = os.path.join(directory, file_name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+    except Exception as e:
+        return
 
 
 
@@ -613,7 +617,11 @@ def clean_generate_files():
     file_path = app.config['GENERATE_FOLDER']
     delete_files_in_directory(file_path)
 
-    print("template_files 目录下文件删除成功")
+    timestamp = time.time()
+    local_time = time.localtime(timestamp)
+    formatted_local_time = time.strftime('%Y-%m-%d %H:%M:%S', local_time)
+
+    print("【{}】template_files 目录下文件删除成功".format(formatted_local_time))
     return {"code": 200, "msg": "文件删除成功"}
 
 
@@ -648,10 +656,11 @@ def download_file():
     file_path = os.path.join(fp, app.config['GENERATE_FOLDER'], file_name)
     if os.path.isfile(file_path):
         if return_type == 'file':
-            return send_file(file_path,as_attachment=True)
+            return send_file(file_path, as_attachment=True)
         elif return_type == 'base64':
             with open(file_path, 'rb') as image_file:
                 encoded_string = base64.b64encode(image_file.read())
+            image_file.close()
             encoded_str = encoded_string.decode('utf-8')
             # print("Encoded Image:", encoded_str)
             return {"code": 200, "msg": "下载成功","data": "data:image/png;base64," + encoded_str}
@@ -781,10 +790,10 @@ def index():
 
 # 创建一个调度器
 scheduler = BackgroundScheduler()
-# 添加任务
-scheduler.add_job(clean_generate_files, 'cron', minute="*/5")
 # 启动调度器
 scheduler.start()
+# 添加定时任务
+task = scheduler.add_job(clean_generate_files, 'cron', hour=0, minute=30, id='task')
 
 
 if __name__ == "__main__":
