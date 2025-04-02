@@ -794,6 +794,7 @@ scheduler = BackgroundScheduler()
 scheduler.start()
 # 添加定时任务
 task = scheduler.add_job(clean_generate_files, 'cron', hour=0, minute=30, id='task')
+# task = scheduler.add_job(clean_generate_files, 'cron', minute='*/1', id='task')
 
 
 if __name__ == "__main__":
