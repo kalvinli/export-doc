@@ -3,7 +3,6 @@ import os, platform, subprocess, json, shutil, time, uuid, re
 from requests_toolbelt import MultipartEncoder
 from docx import Document
 from docx.shared import Pt, Inches
-from docx.oxml.ns import qn
 from docx.shared import RGBColor
 from werkzeug.utils import secure_filename
 from docx2pdf import convert
@@ -35,6 +34,8 @@ app.config['GENERATE_FOLDER'] = GENERATE_FOLDER
 # local_time = time.localtime()
 # formatted_local_time = time.strftime('%Y-%m-%d %H:%M:%S', local_time)
 # formatted_local_time = time.strftime('%Y-%m-%d', local_time)
+
+
 
 ## 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中
 def export_to_doc(app_token, personal_token, table_id, record_id, info_json, file_name, file_field, field_id_map, file_type):
@@ -469,6 +470,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
 
 
 
+## 判断文件名是否在允许的格式范围内
 def allowed_file(filename):
     """
         检验文件名尾缀是否满足格式要求
@@ -479,7 +481,17 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+## 删除指定路径下面的所有文件
+def delete_files_in_directory(directory):
+    file_list = os.listdir(directory)
+    for file_name in file_list:
+        file_path = os.path.join(directory, file_name)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
 
+
+
+## 上传模板文件接口
 @app.route('/upload_template', methods=['GET', 'POST'])
 def upload_file():
     """
@@ -534,6 +546,7 @@ def upload_file():
 
 
 
+## 生成多维表格附件接口
 @app.route("/generate_attachment", methods=['POST'])
 def generate_attachment():
 
@@ -592,7 +605,8 @@ def generate_attachment():
     return {"msg": result_msg, "code": result_code}
 
 
-## 条形码和二维码下载接口
+
+## 条形码和二维码下载接口，返回文件的二进制流
 @app.route("/download_file")
 def download_file():
     """
@@ -606,14 +620,6 @@ def download_file():
     else:
         return "The downloaded file does not exist"
     
-
-
-def delete_files_in_directory(directory):
-    file_list = os.listdir(directory)
-    for file_name in file_list:
-        file_path = os.path.join(directory, file_name)
-        if os.path.isfile(file_path):
-            os.remove(file_path)
 
 
 ## 生成条形码接口，返回下载链接
@@ -686,6 +692,7 @@ def barcode():
     return 'https://' + server_url + '/download_file?file_name=' + result
 
 
+
 ## 生成二维码接口，返回下载链接
 @app.route('/generate_qrcode', methods=['POST'])
 def qrcode():
@@ -726,11 +733,13 @@ def qrcode():
     return 'https://' + server_url + '/download_file?file_name=' + result
 
 
+
 ## 插件主页，用于上传模板文件
 @app.route('/', methods=['GET'])
 def index():
     identifier = str(uuid.uuid1())
     return render_template("index.html", identifier=identifier)
+
 
 
 if __name__ == "__main__":
