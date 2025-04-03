@@ -116,14 +116,14 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
 
             # 判断段落文本中是否包含有`{{字段名` 这样的信息，如果存在，则表示存在占位符否则不处理当前段落文本
             if '{{' + key in paragraph.text:
-                print(key, paragraph.text)
+                # print(key, paragraph.text)
 
                 # 遍历段落中的所有文本片断
                 for run in paragraph.runs:
 
                     # 判断文本片断中是否包含有`{{字段名` 这样的信息，如果存在，则表示存在占位符
                     if '{{' + key in run.text:
-                        print(key, run.text)
+                        # print(key, run.text)
                         
                         # 获取当前文本片断的样式，当前只处理字体大小、颜色、加粗和斜体四种样式
                         font_size = run.font.size  # 假设所有格式相同，这里仅取第一个run的格式
