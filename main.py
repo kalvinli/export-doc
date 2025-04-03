@@ -5,7 +5,6 @@ from requests_toolbelt import MultipartEncoder
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.shared import RGBColor
-from werkzeug.utils import secure_filename
 from docx2pdf import convert
 from apscheduler.schedulers.background import BackgroundScheduler
 from base_class.base_api import BaseClass
@@ -547,7 +546,6 @@ def upload_file():
         #     return '模板文件名必须为 template.docx'
         
         if file and allowed_file(file.filename):
-            # original_filename = secure_filename(file.filename)
             filename = "template.docx"
             try:
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], personal_token, filename))
