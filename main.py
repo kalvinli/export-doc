@@ -53,12 +53,21 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
         - field_id_map: 字段名与字段ID的映射\r\n
         - file_type: 导出文件类型，默认为docx，当前在linux环境下面部署后导出为pdf有问题\r\n
     '''
+
+    
+    msg = "生成附件成功"
+
     # print(info_json)
     # print("*"*30)
     # print(field_id_map)
     # print("*"*30)
 
-    msg = "生成附件成功"
+    for key, value in field_id_map.items():
+        if key not in info_json:
+            info_json[key] = ""
+
+    # print(info_json)
+    # print("*"*30)
 
     # 个人主目录
     main_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token)
@@ -107,7 +116,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
 
             # 判断段落文本中是否包含有`{{字段名` 这样的信息，如果存在，则表示存在占位符否则不处理当前段落文本
             if '{{' + key in paragraph.text:
-                # print(key, paragraph.text)
+                print(key, paragraph.text)
 
                 # 遍历段落中的所有文本片断
                 for run in paragraph.runs:
@@ -270,19 +279,21 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
                                             width = None
                                             height = None
                                             
-                                        extra = {"bitablePerm":{"tableId":table_id,"attachments":{field_id_map[key]:{record_id:[info_json[key]]}}}}
-                                        attachment_resp = BaseClass().download_attachment(personal_token, info_json[key], extra)
-                                        # print(attachment_resp)
+                                        if info_json[key] != "":
+                                            extra = {"bitablePerm":{"tableId":table_id,"attachments":{field_id_map[key]:{record_id:[info_json[key]]}}}}
+                                            attachment_resp = BaseClass().download_attachment(personal_token, info_json[key], extra)
+                                            # print(attachment_resp)
 
-                                        with open(image_file_path, 'wb') as file:
-                                            file.write(attachment_resp.content)
-                                        file.close()
+                                            with open(image_file_path, 'wb') as file:
+                                                file.write(attachment_resp.content)
+                                            file.close()
 
-                                        try:
-                                            paragraph.add_run().add_picture(image_file_path, width=Inches(width), height=Inches(height))
-                                            # print(paragraph.text)
-                                        except Exception as e:
-                                            paragraph.add_run().add_picture(image_file_path)
+                                            try:
+                                                paragraph.add_run().add_picture(image_file_path, width=Inches(width), height=Inches(height))
+                                                # print(paragraph.text)
+                                            except Exception as e:
+                                                paragraph.add_run().add_picture(image_file_path)
+
                                         run.text = ""
 
                                     elif ":barcode" in text_tmp:
@@ -346,6 +357,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
 
     # 保存修改后的文档
     doc.save(target_file_path)
+
 
     if file_type == 'pdf':
         #获取文件名称
@@ -505,7 +517,7 @@ def upload_file():
     """
 
     if 'filePicker' not in request.files:
-        return "No file part"
+        return "不存在文件组件"
     
     # print(request.files)
     file_list = dict(request.files.lists()).get("filePicker")
@@ -528,41 +540,63 @@ def upload_file():
 
     for file in file_list:
         # print(file)
-        # print(file.filename)
+        # print(1, file.filename)
         if file.filename == '':
-            return 'No selected file'
-        elif file.filename != 'template.docx':
-            return '模板文件名必须为 template.docx'
+            return '没有选择模板文件'
+        # elif file.filename != 'template.docx':
+        #     return '模板文件名必须为 template.docx'
         
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+            # original_filename = secure_filename(file.filename)
+            filename = "template.docx"
             try:
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], personal_token, filename))
-                result_msg = result_msg + '\'' + filename + '\' file uploaded successfully<br><br>'
+                result_msg = result_msg + 'template file uploaded successfully<br><br>'
                 server_url = request.headers.get("Origin")
                 identifier = str(uuid.uuid1())
                 # print(identifier)
                 result_msg = result_msg + server_url + "/generate_attachment?identifier=" + identifier
             except Exception as e:
                 # print(e)
-                result_msg = result_msg + '\'' + filename + '\' file uploaded Fail<br>'
+                result_msg = result_msg + 'template file uploaded Fail<br>'
+        else:
+            result_msg = '模板文件格式不正确，请选择 docx 格式的文件'
 
 
     return result_msg
 
 
 
-## 生成多维表格附件接口
+## 多维表格附件生成接口
 @app.route("/generate_attachment", methods=['POST'])
 def generate_attachment():
 
     result_msg = ""
     result_code = 200
+    record_ids = []
 
-    request_body = json.loads(request.data.decode("utf-8"))
-    # print(request_body)
+    try:
+        request_body = json.loads(request.data.decode("utf-8"))
+        # print(request_body)
+        
+    except Exception as e:
+        return {"msg": -1, "code": "请求参数错误"}
+    
+    
+    app_token = request_body.get("app_token", None)
+    personal_base_token = request_body.get("personal_base_token", None)
+    table_id = request_body.get("table_id", None)
+    record_id = request_body.get("record_id", None)
+    file_name = request_body.get("file_name", None)
+    file_field = request_body.get("file_field", None)
+    file_type = request_body.get("file_type", None)
 
-    response = BaseClass().list_fields(request_body.get("app_token"), request_body.get("personal_base_token"), request_body.get("table_id"))
+    if app_token is None or personal_base_token is None or table_id is None or record_id is None or file_field is None or file_name is None:
+        return {"msg": -1, "code": "请求参数为空"}
+    
+    record_ids.append(record_id)
+
+    response = BaseClass().list_fields(app_token, personal_base_token, table_id)
     # print(response)
     field_map = {}
     field_id_map = {}
@@ -577,7 +611,7 @@ def generate_attachment():
     # print(field_id_map)
     # print("*" * 50)
 
-    response = BaseClass().batch_get_records(request_body.get("app_token"), request_body.get("personal_base_token"), request_body.get("table_id"), [request_body.get("record_id")])
+    response = BaseClass().batch_get_records(app_token, personal_base_token, table_id, record_ids)
     # print(response)
     field_list = {}
     if response.get("code") == 0:
@@ -587,7 +621,7 @@ def generate_attachment():
         # print(records)
         # print("*" * 50)
         for key, item in records.items():
-            if key != request_body.get("file_field"):
+            if key != file_field:
                 field_value = BaseClass().get_field_value(field_map[key], item)
             else:
                 field_value = ""
@@ -597,7 +631,7 @@ def generate_attachment():
             field_list[key] = field_value
         
         try:
-            msg = export_to_doc(request_body.get("app_token"), request_body.get("personal_base_token"), request_body.get("table_id"), request_body.get("record_id"), field_list, request_body.get("file_name"), request_body.get("file_field"), field_id_map, request_body.get("file_type", None))
+            msg = export_to_doc(app_token, personal_base_token, table_id, record_id, field_list, file_name, file_field, field_id_map, file_type)
             # result_msg = "生成附件成功"
             result_msg = msg
 
@@ -609,6 +643,7 @@ def generate_attachment():
         result_code = -1
     
     return {"msg": result_msg, "code": result_code}
+
 
 
 ## 删除 template_files 目录下面生成的条形码和二维码文件接口
@@ -635,20 +670,7 @@ def download_file():
     - return_type: 指定返回的类型，不指定此参数默认为文件的二进制信息，可设置为 base64 生成图片的 base64 编码\r\n
     :return:
     """
-
-    # # 读取图片文件并编码为base64
-    # with open('path/to/your/image.png', 'rb') as image_file:
-    #     encoded_string = base64.b64encode(image_file.read())
-    # encoded_str = encoded_string.decode('utf-8')
-    # print("Encoded Image:", encoded_str)
-    
-    # # 解码base64字符串并保存为图片
-    # encoded_data = encoded_str.encode('utf-8')
-    # decoded_data = base64.b64decode(encoded_data)
-    # with open('path/to/save/image_decoded.png', 'wb') as decoded_file:
-    #     decoded_file.write(decoded_data)
         
-
     return_type = request.args.get("return_type", "file")
 
 
