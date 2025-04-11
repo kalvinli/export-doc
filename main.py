@@ -3,13 +3,29 @@ import os, platform, subprocess, json
 import requests, shutil, time, uuid, re, base64
 from requests_toolbelt import MultipartEncoder
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Pt, Cm, Inches
 from docx.shared import RGBColor
+from docx.oxml.ns import nsmap, qn
+from docx.oxml import OxmlElement
+
 from docx2pdf import convert
 from apscheduler.schedulers.background import BackgroundScheduler
 from base_class.base_api import BaseClass
 from base_class.generator import generate_qrcode, generate_barcode
 
+
+
+# 配置命名空间
+nsmap.update({
+    'w': "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    'wp': "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+    'wps': 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape',
+    'wpc': 'http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas',
+    'a': "http://schemas.openxmlformats.org/drawingml/2006/main",
+    'pic': "http://schemas.openxmlformats.org/drawingml/2006/picture",
+    'r': "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    'v': "urn:schemas-microsoft-com:vml"
+})
 
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
@@ -35,6 +51,89 @@ app.config['GENERATE_FOLDER'] = GENERATE_FOLDER
 # formatted_local_time = time.strftime('%Y-%m-%d %H:%M:%S', local_time)
 # formatted_local_time = time.strftime('%Y-%m-%d', local_time)
 
+
+
+def create_image_element(r_id, width, height):
+    """创建图片XML元素"""
+
+    # 单位转换（英寸转EMU）
+    width_emu = int(Cm(width).emu)
+    height_emu = int(Cm(height).emu)
+    print(width_emu, height_emu)
+
+    # 1. 创建内联元素
+    inline = OxmlElement('wp:inline')
+    
+    # 2. 设置间距属性（正确使用qn）
+    inline.set(qn('wp:distT'), "0")
+    inline.set(qn('wp:distB'), "0")
+    inline.set(qn('wp:distL'), "0")
+    inline.set(qn('wp:distR'), "0")
+
+    # 3. 添加尺寸元素
+    extent = OxmlElement('wp:extent')
+    extent.set(qn('wp:cx'), str(width_emu))  # 正确属性名称
+    extent.set(qn('wp:cy'), str(height_emu)) # 正确属性名称
+    inline.append(extent)
+
+    # 4. 添加文档属性
+    docPr = OxmlElement('wp:docPr')
+    docPr.set(qn('wp:id'), r_id)
+    docPr.set(qn('wp:name'), "Inserted_Image")
+    inline.append(docPr)
+
+    # 5. 构建图形结构
+    graphic = OxmlElement('a:graphic')
+    graphicData = OxmlElement('a:graphicData')
+    graphicData.set(qn('a:uri'), 'http://schemas.openxmlformats.org/drawingml/2006/picture')
+
+    # 6. 构建图片定义
+    pic = OxmlElement('pic:pic')
+    
+    # 7. 非可视化属性
+    nvPicPr = OxmlElement('pic:nvPicPr')
+    cNvPr = OxmlElement('pic:cNvPr')
+    cNvPr.set(qn('pic:id'), "0")
+    cNvPr.set(qn('pic:name'), "")
+    nvPicPr.append(cNvPr)
+    nvPicPr.append(OxmlElement('pic:cNvPicPr'))
+    pic.append(nvPicPr)
+
+    # 8. 图片填充设置
+    blipFill = OxmlElement('pic:blipFill')
+    blip = OxmlElement('a:blip')
+    blip.set(qn('r:embed'), r_id)  # 正确关系属性
+    blipFill.append(blip)
+    
+    stretch = OxmlElement('a:stretch')
+    stretch.append(OxmlElement('a:fillRect'))
+    blipFill.append(stretch)
+    pic.append(blipFill)
+
+    # 9. 形状属性（正确使用qn）
+    spPr = OxmlElement('pic:spPr')
+    xfrm = OxmlElement('a:xfrm')
+    
+    off = OxmlElement('a:off')
+    off.set(qn('a:x'), '0')  # 正确属性设置
+    off.set(qn('a:y'), '0')  # 正确属性设置
+    xfrm.append(off)
+    
+    ext = OxmlElement('a:ext')
+    ext.set(qn('a:cx'), str(width_emu))  # 正确属性
+    ext.set(qn('a:cy'), str(height_emu))  # 正确属性
+    xfrm.append(ext)
+    
+    spPr.append(xfrm)
+    spPr.append(OxmlElement('a:prstGeom', {qn('a:prst'): 'rect'}))
+    pic.append(spPr)
+
+    # 10. 组装完整结构
+    graphicData.append(pic)
+    graphic.append(graphicData)
+    inline.append(graphic)
+
+    return inline
 
 
 ## 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中
@@ -84,6 +183,9 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
     # 个人图片文件路径
     image_file_path = os.path.join(main_path, file_name + ".jpg")
 
+    # 印章图片文件路径
+    seal_image_file_path = os.path.join(main_path, file_name + ".png")
+
     # 如果模板文件不存在，则直接返回
     if not os.path.isfile(template_file_path):
         print("模板文件不存在，请先上传模板文件")
@@ -104,10 +206,17 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
     # 基于个人生成word文件副本初始化一个文档实例
     doc = Document(target_file_path)
 
+    # 查找所有可能包含文本框的XML元素
+    search_paths = [
+        './/w:txbxContent//w:t',          # 新版Word文本框
+        './/v:textbox//w:t',             # 旧版Word文本框
+        './/wps:txbx//w:t',              # Word 2010+ 文本框
+        './/wpc:txbx//w:t'               # 绘图画布中的文本框
+    ]
+
+
     ## 遍历文档中的所有文本段落
     for paragraph in doc.paragraphs:
-        # for run in paragraph.runs:
-        #   print(run.text)
         index = 0
         # 根据获取段落文本，遍历字段名列表进行占位字符的替换
         for key, value in info_json.items():
@@ -163,7 +272,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
 
                                 # 将图片替换到图片占位符所在位置，并把原有的占位符文本置为空
                                 try:
-                                    paragraph.add_run().add_picture(image_file_path, width=Inches(width), height=Inches(height))
+                                    paragraph.add_run().add_picture(image_file_path, width=Cm(width), height=Cm(height))
                                 except Exception as e:
                                     paragraph.add_run().add_picture(image_file_path)
                                 run.text = ""
@@ -187,7 +296,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
 
                                 # 将条形码替换到条形码占位符所在位置，并把原有的占位符文本置为空
                                 try:
-                                    paragraph.add_run().add_picture(barcode_file_path, width=Inches(width), height=Inches(height))
+                                    paragraph.add_run().add_picture(barcode_file_path, width=Cm(width), height=Cm(height))
                                 except Exception as e:
                                     paragraph.add_run().add_picture(barcode_file_path)
                                 run.text = "" 
@@ -211,7 +320,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
 
                                 # 将二维码替换到二维码占位符所在位置，并把原有的占位符文本置为空
                                 try:
-                                    paragraph.add_run().add_picture(qrcode_file_path, width=Inches(width), height=Inches(height))
+                                    paragraph.add_run().add_picture(qrcode_file_path, width=Cm(width), height=Cm(height))
                                 except Exception as e:
                                     paragraph.add_run().add_picture(qrcode_file_path)
                                 run.text = ""
@@ -223,6 +332,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
                         # 如果替换失败，则将当前文本片断置为空，继续后面的执行
                         except Exception as e:
                             run.text = ""
+                            print(e)
                             
                         # 应用之前保存的样式
                         if font_size:  # 如果存在字体大小，设置字体大小
@@ -236,6 +346,80 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
                         break  # 只考虑第一个出现的占位符
                 
                 index = index + 1
+
+            # 判断是否包含浮动文本框，并进行相应的替换操作
+            else:
+                # 使用正确的命名空间查询浮动文本框
+                para_element = paragraph._element
+                for path in search_paths:
+                    elements = para_element.xpath(path)
+                    for element in elements:
+                        try:
+                            if '{{' + key in element.text:
+                                # print(key, element.text)
+
+                                # 如果占位符包含有`:image`，替换占位符为图片
+                                if ":image" in element.text:
+                                    # 将文本片断中的`{{`和`}}`替换为空，保留有用信息
+                                    element_text = element.text.replace("{{","").replace("}}","")
+                                    # 将以上信息用`:`分割，生成列表
+                                    key_split = element_text.split(":")
+                                    key = key_split[0]
+                                    # 如果列表的长度为3，则以上信息中包含有图片尺寸
+                                    if len(key_split) == 3:
+                                        # 对图片尺寸进行分割后并进行变量赋值
+                                        size = key_split[2].split("*")
+                                        width = float(size[0])
+                                        height = float(size[1])
+
+                                    # 如果列表的长度不为3，则以上信息中不包含有图片尺寸，则不处理图片大小
+                                    else:
+                                        width = None
+                                        height = None
+                                        
+                                    # 生成多维表格附件下载的extra信息，并进行附件下载，返回附件文件的二进制流信息
+                                    extra = {"bitablePerm":{"tableId":table_id,"attachments":{field_id_map[key]:{record_id:[value]}}}}
+                                    attachment_resp = BaseClass().download_attachment(personal_token, value, extra)
+                                    # print(attachment_resp)
+
+                                    # 将二进制流信息写入到生成印章的图片附件中
+                                    with open(seal_image_file_path, 'wb') as file:
+                                        file.write(attachment_resp.content)
+                                    file.close()
+
+                                    element.text = ""
+                                    try:
+                                        # 清空原有文本
+                                        parent = element.getparent()
+                                        parent.remove(element)
+
+                                        # 获取文档的OPC包
+                                        package = doc.part.package
+                                        
+                                        # 添加图片到包并获取图片部分
+                                        image_part = package.get_or_add_image_part(seal_image_file_path)
+                                        
+                                        # 创建与文档的关系
+                                        r_id = doc.part.relate_to(image_part, "image")
+                                        # print(r_id)
+                                            
+                                        # 创建新绘图元素
+                                        drawing = OxmlElement('w:drawing')
+                                        image_element = create_image_element(r_id, width, height)
+                                        drawing.append(image_element)
+                                        
+                                        # 插入到文档结构
+                                        parent.append(drawing)
+                                        
+                                    except Exception as e:
+                                        print(e)
+                                else:
+                                    element.text = element.text.replace("{{"+ key + "}}", value, 1)
+
+                                break
+                        except Exception as e:
+                            element.text = ""
+                            print(e)
 
 
     ## 遍历文档中的所有表格
@@ -288,7 +472,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
                                             file.close()
 
                                             try:
-                                                paragraph.add_run().add_picture(image_file_path, width=Inches(width), height=Inches(height))
+                                                paragraph.add_run().add_picture(image_file_path, width=Cm(width), height=Cm(height))
                                                 # print(paragraph.text)
                                             except Exception as e:
                                                 paragraph.add_run().add_picture(image_file_path)
@@ -310,7 +494,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
                                         barcode_file_path = os.path.join(main_path, barcode_file_name)
 
                                         try:
-                                            paragraph.add_run().add_picture(barcode_file_path, width=Inches(width), height=Inches(height))
+                                            paragraph.add_run().add_picture(barcode_file_path, width=Cm(width), height=Cm(height))
                                         except Exception as e:
                                             paragraph.add_run().add_picture(barcode_file_path)
                                         run.text = ""
@@ -330,7 +514,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json, fil
                                         qrcode_file_path = os.path.join(main_path, qrcode_file_name)
 
                                         try:
-                                            paragraph.add_run().add_picture(qrcode_file_path, width=Inches(width), height=Inches(height))
+                                            paragraph.add_run().add_picture(qrcode_file_path, width=Cm(width), height=Cm(height))
                                         except Exception as e:
                                             paragraph.add_run().add_picture(qrcode_file_path)
                                         run.text = ""
