@@ -7,6 +7,7 @@ import json
 import time
 import uuid
 import base64
+import re
 from requests_toolbelt import MultipartEncoder
 from docx import Document
 from docx.shared import Pt, Cm
@@ -14,24 +15,35 @@ from docx.shared import RGBColor
 from docx.oxml.ns import nsmap, qn
 from docx.oxml import OxmlElement
 
-from docx2pdf import convert
+# from docx2pdf import convert
 from apscheduler.schedulers.background import BackgroundScheduler
 from base_class.base_api import BaseClass
 from base_class.generator import generate_qrcode, generate_barcode
 
 # 配置命名空间
 nsmap.update({
-    'w': "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-    'wp':
-    "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
-    'wps': 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape',
-    'wpc':
-    'http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas',
-    'a': "http://schemas.openxmlformats.org/drawingml/2006/main",
-    'pic': "http://schemas.openxmlformats.org/drawingml/2006/picture",
-    'r': "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-    'v': "urn:schemas-microsoft-com:vml"
+    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "pic": "http://schemas.openxmlformats.org/drawingml/2006/picture",
+    "wpc": "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas",
+    "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
+    "o": "urn:schemas-microsoft-com:office:office",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
+    "image": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+    "v": "urn:schemas-microsoft-com:vml",
+    "wp14": "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
+    "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+    "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "w14": "http://schemas.microsoft.com/office/word/2010/wordml",
+    "w10": "urn:schemas-microsoft-com:office:word",
+    "w15": "http://schemas.microsoft.com/office/word/2012/wordml",
+    "wpg": "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
+    "wpi": "http://schemas.microsoft.com/office/word/2010/wordprocessingInk",
+    "wne": "http://schemas.microsoft.com/office/word/2006/wordml",
+    "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+    "wpsCustomData": "http://www.wps.cn/officeDocument/2013/wpsCustomData"
 })
+
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config['JSON_AS_ASCII'] = False
@@ -57,49 +69,52 @@ app.config['GENERATE_FOLDER'] = GENERATE_FOLDER
 
 
 def create_image_element(r_id, width, height):
-    """创建图片XML元素"""
 
-    # 单位转换（英寸转EMU）
+    """创建符合Open XML标准的图片元素结构"""
+    # 单位转换（厘米转EMU）
     width_emu = int(Cm(width).emu)
     height_emu = int(Cm(height).emu)
-    # print(width_emu, height_emu)
 
-    # 1. 创建内联元素
+    print(width, height)
+    print(width_emu, height_emu)
+
+    # ========== 核心结构构建 ==========
+    # 1. 内联元素 (需确保文档根元素已声明wp命名空间)
     inline = OxmlElement('wp:inline')
+    
+    # 2. 设置间距属性
+    inline.set('distT', "0")
+    inline.set('distB', "0")
+    inline.set('distL', "0")
+    inline.set('distR', "0")
 
-    # 2. 设置间距属性（正确使用qn）
-    inline.set(qn('wp:distT'), "0")
-    inline.set(qn('wp:distB'), "0")
-    inline.set(qn('wp:distL'), "0")
-    inline.set(qn('wp:distR'), "0")
 
     # 3. 添加尺寸元素
     extent = OxmlElement('wp:extent')
-    extent.set(qn('wp:cx'), str(width_emu))  # 正确属性名称
-    extent.set(qn('wp:cy'), str(height_emu))  # 正确属性名称
+    extent.set('cx', str(width_emu)) 
+    extent.set('cy', str(height_emu))
     inline.append(extent)
 
-    # 4. 添加文档属性
+    # 4. 文档属性（修正ID类型问题）
     docPr = OxmlElement('wp:docPr')
-    docPr.set(qn('wp:id'), r_id)
-    docPr.set(qn('wp:name'), "Inserted_Image")
+    docPr.set('id', "".join(re.findall(r'\d+', r_id)))  # 必须为数字，建议使用独立计数器
+    docPr.set('name', "Inserted_Image")  # 使用描述性名称
     inline.append(docPr)
 
     # 5. 构建图形结构
     graphic = OxmlElement('a:graphic')
     graphicData = OxmlElement('a:graphicData')
-    graphicData.set(
-        qn('a:uri'),
-        'http://schemas.openxmlformats.org/drawingml/2006/picture')
+    graphicData.set('uri', 
+                  'http://schemas.openxmlformats.org/drawingml/2006/picture')
 
-    # 6. 构建图片定义
+    # 6. 图片定义
     pic = OxmlElement('pic:pic')
 
-    # 7. 非可视化属性
+    # 7. 非可视化属性（修正ID设置）
     nvPicPr = OxmlElement('pic:nvPicPr')
     cNvPr = OxmlElement('pic:cNvPr')
-    cNvPr.set(qn('pic:id'), "0")
-    cNvPr.set(qn('pic:name'), "")
+    cNvPr.set('id', "".join(re.findall(r'\d+', r_id)))  # 不同元素使用不同ID
+    cNvPr.set('name', r_id)  # 留空避免冲突
     nvPicPr.append(cNvPr)
     nvPicPr.append(OxmlElement('pic:cNvPicPr'))
     pic.append(nvPicPr)
@@ -107,33 +122,41 @@ def create_image_element(r_id, width, height):
     # 8. 图片填充设置
     blipFill = OxmlElement('pic:blipFill')
     blip = OxmlElement('a:blip')
-    blip.set(qn('r:embed'), r_id)  # 正确关系属性
+    blip.set(qn('r:embed'), r_id)  # 关联正确的关系ID
     blipFill.append(blip)
-
+    
+    # 添加拉伸设置
     stretch = OxmlElement('a:stretch')
     stretch.append(OxmlElement('a:fillRect'))
     blipFill.append(stretch)
     pic.append(blipFill)
 
-    # 9. 形状属性（正确使用qn）
+    # 9. 形状属性（优化坐标设置）
     spPr = OxmlElement('pic:spPr')
     xfrm = OxmlElement('a:xfrm')
-
+    
+    # 偏移量设置
     off = OxmlElement('a:off')
-    off.set(qn('a:x'), '0')  # 正确属性设置
-    off.set(qn('a:y'), '0')  # 正确属性设置
+    off.set('x', '0')
+    off.set('y', '0')
     xfrm.append(off)
-
+    
+    # 扩展量设置
     ext = OxmlElement('a:ext')
-    ext.set(qn('a:cx'), str(width_emu))  # 正确属性
-    ext.set(qn('a:cy'), str(height_emu))  # 正确属性
+    ext.set('cx', str(width_emu))
+    ext.set('cy', str(height_emu))
     xfrm.append(ext)
-
+    
     spPr.append(xfrm)
-    spPr.append(OxmlElement('a:prstGeom', {qn('a:prst'): 'rect'}))
+    
+    # 几何形状设置（关键修复点）
+    prstGeom = OxmlElement('a:prstGeom')
+    prstGeom.set('prst', 'rect')  # 必须设置prst属性
+    spPr.append(prstGeom)
+    
     pic.append(spPr)
 
-    # 10. 组装完整结构
+    # ========== 结构组装 ==========
     graphicData.append(pic)
     graphic.append(graphicData)
     inline.append(graphic)
@@ -212,6 +235,23 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
 
     # 基于副本文件初始化一个文档实例
     doc = Document(target_file_path)
+
+    # try:         
+    #     root = doc.element
+        
+    #     print(nsmap['wp'])
+    #     # root.set(nsdecls('wp'), nsmap['wp'])
+    #     # root.set(nsdecls('a'), nsmap['a'])
+    #     # root.set(nsdecls('pic'), nsmap['pic'])
+        
+    #     # root.set('xmlns:wp', 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing')
+    #     # root.set('xmlns:a', 'http://schemas.openxmlformats.org/drawingml/2006/main')
+    #     # root.set('xmlns:pic', 'http://schemas.openxmlformats.org/drawingml/2006/picture')
+    #     # root.set('xmlns:r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships')
+
+    # except Exception as e:
+    #     print(e)
+
 
     # 查找所有可能包含文本框的XML元素
     search_paths = [
@@ -388,12 +428,14 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
             else:
                 # 使用正确的命名空间查询浮动文本框
                 para_element = paragraph._element
+                flag = False
                 for path in search_paths:
                     elements = para_element.xpath(path)
                     for element in elements:
                         try:
                             if '{{' + key in element.text:
-                                # print(key, element.text)
+                                print(key, element.text)
+                                flag = True
 
                                 # 如果占位符包含有`:image`，替换占位符为图片
                                 if ":image" in element.text:
@@ -437,32 +479,55 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
                                         file.write(attachment_resp.content)
                                     file.close()
 
-                                    element.text = ""
                                     try:
                                         # 清空原有文本
                                         parent = element.getparent()
-                                        parent.remove(element)
+                                        # parent.remove(element)
 
-                                        # 获取文档的OPC包
-                                        package = doc.part.package
-
-                                        # 添加图片到包并获取图片部分
-                                        image_part = package.get_or_add_image_part(
-                                            seal_image_file_path)
-
-                                        # 创建与文档的关系
-                                        r_id = doc.part.relate_to(
-                                            image_part, "image")
-                                        # print(r_id)
-
-                                        # 创建新绘图元素
+                                        # 添加图片关系
+                                        image_part = doc.part.package.get_or_add_image_part(seal_image_file_path)
+                                        r_id = doc.part.relate_to(image_part, nsmap['image'])
+                                        
+                                        # 创建图片元素
+                                        image_element = create_image_element(r_id, width, height)
+                                        
+                                        # 构建标准文档结构
+                                        p = OxmlElement('w:p')
+                                        r = OxmlElement('w:r')
                                         drawing = OxmlElement('w:drawing')
-                                        image_element = create_image_element(
-                                            r_id, width, height)
                                         drawing.append(image_element)
+                                        
+                                        # 组装结构
+                                        r.append(drawing)
+                                        p.append(r)
 
                                         # 插入到文档结构
+                                        parent.clear()
                                         parent.append(drawing)
+                                        
+                                        # # 获取文档的OPC包
+                                        # package = doc.part.package
+
+                                        # # 添加图片到包并获取图片部分
+                                        # image_part = package.get_or_add_image_part(
+                                        #     seal_image_file_path)
+                                        # # print(image_part)
+
+                                        # # 创建与文档的关系
+                                        # r_id = doc.part.relate_to(
+                                        #     image_part, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image")
+                                        # # print(r_id)
+
+                                        # # 创建新绘图元素
+                                        # drawing = OxmlElement('w:drawing')
+                                        # image_element = create_image_element(
+                                        #     r_id, width, height)
+                                        # drawing.append(image_element)
+
+                                        # parent.clear()
+                                        # # 插入到文档结构
+                                        # parent.append(drawing)
+                                        # element.text = ""
 
                                     except Exception as e:
                                         print(e)
@@ -474,6 +539,9 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
                         except Exception as e:
                             element.text = ""
                             print(e)
+
+                    if flag:
+                        break
 
     ## 遍历文档中的所有表格
     for table in doc.tables:
@@ -632,7 +700,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
     # 保存修改后的文档
     doc.save(target_file_path)
 
-    print(file_type)
+    # print(file_type)
     if file_type == 'pdf':
         #获取文件名称
         filename = target_file_path.split(".docx")[0]
@@ -643,7 +711,11 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
         # 将 docx 文档转换为 PDF，如果转换失败，将上传 docx 文件到附件字段中
         if system == 'Windows':
             try:
-                convert(target_file_path, pdf_target_file_path)
+                import pythoncom
+                import comtypes.client
+                pythoncom.CoInitialize()
+                # convert(target_file_path, pdf_target_file_path)
+                wordToPdf(target_file_path)
 
             except Exception as e:
                 msg = "系统未安装 Office 软件或 PDF 转换失败，自动导出为 docx 格式"
@@ -736,12 +808,32 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
             if os.path.isfile(target_file_path):
                 file.close()
                 try:
-                    shutil.rmtree(personal_main_path)
-                    # pass
+                    # shutil.rmtree(personal_main_path)
+                    pass
                 except Exception as e:
                     print("删除临时目录出错：", e)
 
     return msg
+
+
+def wordToPdf(word_file):
+    '''
+    将word文件转换成pdf文件
+    :param word_file: word文件
+    :return:
+    '''
+    # 获取word格式处理对象
+    word = comtypes.client.CreateObject('Word.Application')
+    word.Visible = False # 设置窗口不可见
+    # 以Doc对象打开文件
+    doc_ = word.Documents.Open(word_file)
+    # 另存为pdf文件
+    doc_.SaveAs(word_file.replace(".docx", ".pdf"), FileFormat=17)
+    # 关闭doc对象
+    doc_.Close()
+    # 退出word对象
+    word.Quit()
+
 
 
 ## 判断文件名是否在允许的格式范围内
