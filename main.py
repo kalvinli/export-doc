@@ -68,101 +68,6 @@ app.config['GENERATE_FOLDER'] = GENERATE_FOLDER
 # formatted_local_time = time.strftime('%Y-%m-%d', local_time)
 
 
-def create_image_element(r_id, width, height):
-
-    """创建符合Open XML标准的图片元素结构"""
-    # 单位转换（厘米转EMU）
-    width_emu = int(Cm(width).emu)
-    height_emu = int(Cm(height).emu)
-
-    print(width, height)
-    print(width_emu, height_emu)
-
-    # ========== 核心结构构建 ==========
-    # 1. 内联元素 (需确保文档根元素已声明wp命名空间)
-    inline = OxmlElement('wp:inline')
-    
-    # 2. 设置间距属性
-    inline.set('distT', "0")
-    inline.set('distB', "0")
-    inline.set('distL', "0")
-    inline.set('distR', "0")
-
-
-    # 3. 添加尺寸元素
-    extent = OxmlElement('wp:extent')
-    extent.set('cx', str(width_emu)) 
-    extent.set('cy', str(height_emu))
-    inline.append(extent)
-
-    # 4. 文档属性（修正ID类型问题）
-    docPr = OxmlElement('wp:docPr')
-    docPr.set('id', "".join(re.findall(r'\d+', r_id)))  # 必须为数字，建议使用独立计数器
-    docPr.set('name', "Inserted_Image")  # 使用描述性名称
-    inline.append(docPr)
-
-    # 5. 构建图形结构
-    graphic = OxmlElement('a:graphic')
-    graphicData = OxmlElement('a:graphicData')
-    graphicData.set('uri', 
-                  'http://schemas.openxmlformats.org/drawingml/2006/picture')
-
-    # 6. 图片定义
-    pic = OxmlElement('pic:pic')
-
-    # 7. 非可视化属性（修正ID设置）
-    nvPicPr = OxmlElement('pic:nvPicPr')
-    cNvPr = OxmlElement('pic:cNvPr')
-    cNvPr.set('id', "".join(re.findall(r'\d+', r_id)))  # 不同元素使用不同ID
-    cNvPr.set('name', r_id)  # 留空避免冲突
-    nvPicPr.append(cNvPr)
-    nvPicPr.append(OxmlElement('pic:cNvPicPr'))
-    pic.append(nvPicPr)
-
-    # 8. 图片填充设置
-    blipFill = OxmlElement('pic:blipFill')
-    blip = OxmlElement('a:blip')
-    blip.set(qn('r:embed'), r_id)  # 关联正确的关系ID
-    blipFill.append(blip)
-    
-    # 添加拉伸设置
-    stretch = OxmlElement('a:stretch')
-    stretch.append(OxmlElement('a:fillRect'))
-    blipFill.append(stretch)
-    pic.append(blipFill)
-
-    # 9. 形状属性（优化坐标设置）
-    spPr = OxmlElement('pic:spPr')
-    xfrm = OxmlElement('a:xfrm')
-    
-    # 偏移量设置
-    off = OxmlElement('a:off')
-    off.set('x', '0')
-    off.set('y', '0')
-    xfrm.append(off)
-    
-    # 扩展量设置
-    ext = OxmlElement('a:ext')
-    ext.set('cx', str(width_emu))
-    ext.set('cy', str(height_emu))
-    xfrm.append(ext)
-    
-    spPr.append(xfrm)
-    
-    # 几何形状设置（关键修复点）
-    prstGeom = OxmlElement('a:prstGeom')
-    prstGeom.set('prst', 'rect')  # 必须设置prst属性
-    spPr.append(prstGeom)
-    
-    pic.append(spPr)
-
-    # ========== 结构组装 ==========
-    graphicData.append(pic)
-    graphic.append(graphicData)
-    inline.append(graphic)
-
-    return inline
-
 
 ## 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中
 def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
@@ -235,23 +140,6 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
 
     # 基于副本文件初始化一个文档实例
     doc = Document(target_file_path)
-
-    # try:         
-    #     root = doc.element
-        
-    #     print(nsmap['wp'])
-    #     # root.set(nsdecls('wp'), nsmap['wp'])
-    #     # root.set(nsdecls('a'), nsmap['a'])
-    #     # root.set(nsdecls('pic'), nsmap['pic'])
-        
-    #     # root.set('xmlns:wp', 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing')
-    #     # root.set('xmlns:a', 'http://schemas.openxmlformats.org/drawingml/2006/main')
-    #     # root.set('xmlns:pic', 'http://schemas.openxmlformats.org/drawingml/2006/picture')
-    #     # root.set('xmlns:r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships')
-
-    # except Exception as e:
-    #     print(e)
-
 
     # 查找所有可能包含文本框的XML元素
     search_paths = [
@@ -434,7 +322,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
                     for element in elements:
                         try:
                             if '{{' + key in element.text:
-                                print(key, element.text)
+                                # print(key, element.text)
                                 flag = True
 
                                 # 如果占位符包含有`:image`，替换占位符为图片
@@ -504,30 +392,6 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
                                         # 插入到文档结构
                                         parent.clear()
                                         parent.append(drawing)
-                                        
-                                        # # 获取文档的OPC包
-                                        # package = doc.part.package
-
-                                        # # 添加图片到包并获取图片部分
-                                        # image_part = package.get_or_add_image_part(
-                                        #     seal_image_file_path)
-                                        # # print(image_part)
-
-                                        # # 创建与文档的关系
-                                        # r_id = doc.part.relate_to(
-                                        #     image_part, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image")
-                                        # # print(r_id)
-
-                                        # # 创建新绘图元素
-                                        # drawing = OxmlElement('w:drawing')
-                                        # image_element = create_image_element(
-                                        #     r_id, width, height)
-                                        # drawing.append(image_element)
-
-                                        # parent.clear()
-                                        # # 插入到文档结构
-                                        # parent.append(drawing)
-                                        # element.text = ""
 
                                     except Exception as e:
                                         print(e)
@@ -712,7 +576,6 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
         if system == 'Windows':
             try:
                 import pythoncom
-                import comtypes.client
                 pythoncom.CoInitialize()
                 # convert(target_file_path, pdf_target_file_path)
                 wordToPdf(target_file_path)
@@ -735,8 +598,12 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
             # print(cmd)
 
             try:
-                subprocess.run(command, check=True)
-                # os.system(cmd)
+                try:
+                    subprocess.run(command, check=True)
+                    # os.system(cmd)
+                except Exception as e:
+                    time.sleep(2)
+                    subprocess.run(command, check=True)
 
             except Exception as e:
                 msg = "系统未安装 LibreOffice 软件或 PDF 转换失败，自动导出为 docx 格式"
@@ -808,7 +675,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
             if os.path.isfile(target_file_path):
                 file.close()
                 try:
-                    # shutil.rmtree(personal_main_path)
+                    shutil.rmtree(personal_main_path)
                     pass
                 except Exception as e:
                     print("删除临时目录出错：", e)
@@ -823,6 +690,7 @@ def wordToPdf(word_file):
     :return:
     '''
     # 获取word格式处理对象
+    import comtypes.client
     word = comtypes.client.CreateObject('Word.Application')
     word.Visible = False # 设置窗口不可见
     # 以Doc对象打开文件
@@ -833,6 +701,103 @@ def wordToPdf(word_file):
     doc_.Close()
     # 退出word对象
     word.Quit()
+
+
+
+def create_image_element(r_id, width, height):
+
+    """创建符合Open XML标准的图片元素结构"""
+    # 单位转换（厘米转EMU）
+    width_emu = int(Cm(width).emu)
+    height_emu = int(Cm(height).emu)
+
+    # print(width, height)
+    # print(width_emu, height_emu)
+
+    # ========== 核心结构构建 ==========
+    # 1. 内联元素 (需确保文档根元素已声明wp命名空间)
+    inline = OxmlElement('wp:inline')
+    
+    # 2. 设置间距属性
+    inline.set('distT', "0")
+    inline.set('distB', "0")
+    inline.set('distL', "0")
+    inline.set('distR', "0")
+
+
+    # 3. 添加尺寸元素
+    extent = OxmlElement('wp:extent')
+    extent.set('cx', str(width_emu)) 
+    extent.set('cy', str(height_emu))
+    inline.append(extent)
+
+    # 4. 文档属性（修正ID类型问题）
+    docPr = OxmlElement('wp:docPr')
+    docPr.set('id', "".join(re.findall(r'\d+', r_id)))  # 必须为数字，建议使用独立计数器
+    docPr.set('name', "Inserted_Image")  # 使用描述性名称
+    inline.append(docPr)
+
+    # 5. 构建图形结构
+    graphic = OxmlElement('a:graphic')
+    graphicData = OxmlElement('a:graphicData')
+    graphicData.set('uri', 
+                  'http://schemas.openxmlformats.org/drawingml/2006/picture')
+
+    # 6. 图片定义
+    pic = OxmlElement('pic:pic')
+
+    # 7. 非可视化属性（修正ID设置）
+    nvPicPr = OxmlElement('pic:nvPicPr')
+    cNvPr = OxmlElement('pic:cNvPr')
+    cNvPr.set('id', "".join(re.findall(r'\d+', r_id)))  # 不同元素使用不同ID
+    cNvPr.set('name', r_id)  # 留空避免冲突
+    nvPicPr.append(cNvPr)
+    nvPicPr.append(OxmlElement('pic:cNvPicPr'))
+    pic.append(nvPicPr)
+
+    # 8. 图片填充设置
+    blipFill = OxmlElement('pic:blipFill')
+    blip = OxmlElement('a:blip')
+    blip.set(qn('r:embed'), r_id)  # 关联正确的关系ID
+    blipFill.append(blip)
+    
+    # 添加拉伸设置
+    stretch = OxmlElement('a:stretch')
+    stretch.append(OxmlElement('a:fillRect'))
+    blipFill.append(stretch)
+    pic.append(blipFill)
+
+    # 9. 形状属性（优化坐标设置）
+    spPr = OxmlElement('pic:spPr')
+    xfrm = OxmlElement('a:xfrm')
+    
+    # 偏移量设置
+    off = OxmlElement('a:off')
+    off.set('x', '0')
+    off.set('y', '0')
+    xfrm.append(off)
+    
+    # 扩展量设置
+    ext = OxmlElement('a:ext')
+    ext.set('cx', str(width_emu))
+    ext.set('cy', str(height_emu))
+    xfrm.append(ext)
+    
+    spPr.append(xfrm)
+    
+    # 几何形状设置（关键修复点）
+    prstGeom = OxmlElement('a:prstGeom')
+    prstGeom.set('prst', 'rect')  # 必须设置prst属性
+    spPr.append(prstGeom)
+    
+    pic.append(spPr)
+
+    # ========== 结构组装 ==========
+    graphicData.append(pic)
+    graphic.append(graphicData)
+    inline.append(graphic)
+
+    return inline
 
 
 
