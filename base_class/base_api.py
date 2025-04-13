@@ -114,10 +114,15 @@ class BaseClass(object):
         ## 附件
         elif field_type == 17:
             # print(field_type, field_value_item)
-            if "image" in field_value_item[0].get("type"):
-                field_value = field_value_item[0].get("file_token")
-            else:
-                field_value = ""
+            field_value = []
+            for value_item in field_value_item:
+                field_value_tmp = {}
+                if "image" in value_item.get("type"):
+                    field_value_tmp["file_token"] = value_item.get("file_token")
+                    field_value_tmp["name"] = value_item.get("name")
+                    field_value_tmp["size"] = value_item.get("size")
+                    field_value_tmp["type"] = value_item.get("type")
+                    field_value.append(field_value_tmp)
 
         ## 单向关联和双向关联
         elif field_type == 18 or field_type == 21:

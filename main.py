@@ -201,35 +201,42 @@ def export_to_doc(app_token, personal_base_token, table_id, record_id, info_json
                                     height = None
 
                                 # 生成多维表格附件下载的extra信息，并进行附件下载，返回附件文件的二进制流信息
-                                extra = {
-                                    "bitablePerm": {
-                                        "tableId": table_id,
-                                        "attachments": {
-                                            field_id_map[key]: {
-                                                record_id: [value]
+                                for value_item in value:
+                                    file_token = value_item.get("file_token")
+                                    name = value_item.get("name")
+                                    extra = {
+                                        "bitablePerm": {
+                                            "tableId": table_id,
+                                            "attachments": {
+                                                field_id_map[key]: {
+                                                    record_id: [file_token]
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                attachment_resp = BaseClass(
-                                ).download_attachment(personal_base_token, value,
-                                                      extra)
-                                # print(attachment_resp)
+                                    attachment_resp = BaseClass(
+                                    ).download_attachment(personal_base_token, file_token,
+                                                        extra)
+                                    # print(attachment_resp)
 
-                                # 将二进制流信息写入到个人生成的图片附件中
-                                with open(image_file_path, 'wb') as file:
-                                    file.write(attachment_resp.content)
-                                file.close()
+                                    # 将二进制流信息写入到个人生成的图片附件中
+                                    image_file_path = os.path.join(personal_main_path, name)
+                                    with open(image_file_path, 'wb') as file:
+                                        file.write(attachment_resp.content)
+                                    file.close()
 
-                                # 将图片替换到图片占位符所在位置，并把原有的占位符文本置为空
-                                try:
-                                    paragraph.add_run().add_picture(
-                                        image_file_path,
-                                        width=Cm(width),
-                                        height=Cm(height))
-                                except Exception as e:
-                                    paragraph.add_run().add_picture(
-                                        image_file_path)
+                                    # 将图片替换到图片占位符所在位置，并把原有的占位符文本置为空
+                                    try:
+                                        paragraph.add_run().add_picture(
+                                            image_file_path,
+                                            width=Cm(width),
+                                            height=Cm(height))
+                                    except Exception as e:
+                                        paragraph.add_run().add_picture(
+                                            image_file_path)
+                                        
+                                    os.remove(image_file_path)
+
                                 run.text = ""
 
                             # 如果占位符包含有`:barcode`，替换占位符为条形码
@@ -351,55 +358,61 @@ def export_to_doc(app_token, personal_base_token, table_id, record_id, info_json
                                         height = None
 
                                     # 生成多维表格附件下载的extra信息，并进行附件下载，返回附件文件的二进制流信息
-                                    extra = {
-                                        "bitablePerm": {
-                                            "tableId": table_id,
-                                            "attachments": {
-                                                field_id_map[key]: {
-                                                    record_id: [value]
+                                    for value_item in value:
+                                        file_token = value_item.get("file_token")
+                                        name = value_item.get("name")
+                                        extra = {
+                                            "bitablePerm": {
+                                                "tableId": table_id,
+                                                "attachments": {
+                                                    field_id_map[key]: {
+                                                        record_id: [file_token]
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
-                                    attachment_resp = BaseClass(
-                                    ).download_attachment(
-                                        personal_base_token, value, extra)
-                                    # print(attachment_resp)
+                                        attachment_resp = BaseClass(
+                                        ).download_attachment(
+                                            personal_base_token, file_token, extra)
+                                        # print(attachment_resp)
 
-                                    # 将二进制流信息写入到生成印章的图片附件中
-                                    with open(seal_image_file_path,
-                                              'wb') as file:
-                                        file.write(attachment_resp.content)
-                                    file.close()
+                                        # 将二进制流信息写入到生成印章的图片附件中
+                                        image_file_path = os.path.join(personal_main_path, name)
+                                        with open(image_file_path,
+                                                'wb') as file:
+                                            file.write(attachment_resp.content)
+                                        file.close()
 
-                                    try:
-                                        # 清空原有文本
-                                        parent = element.getparent()
-                                        # parent.remove(element)
+                                        try:
+                                            # 清空原有文本
+                                            parent = element.getparent()
+                                            # parent.remove(element)
 
-                                        # 添加图片关系
-                                        image_part = doc.part.package.get_or_add_image_part(seal_image_file_path)
-                                        r_id = doc.part.relate_to(image_part, nsmap['image'])
+                                            # 添加图片关系
+                                            image_part = doc.part.package.get_or_add_image_part(image_file_path)
+                                            r_id = doc.part.relate_to(image_part, nsmap['image'])
+                                            
+                                            # 创建图片元素
+                                            image_element = create_image_element(r_id, width, height)
+                                            
+                                            # 构建标准文档结构
+                                            p = OxmlElement('w:p')
+                                            r = OxmlElement('w:r')
+                                            drawing = OxmlElement('w:drawing')
+                                            drawing.append(image_element)
+                                            
+                                            # 组装结构
+                                            r.append(drawing)
+                                            p.append(r)
+
+                                            # 插入到文档结构
+                                            parent.clear()
+                                            parent.append(drawing)
+
+                                        except Exception as e:
+                                            print(e)
                                         
-                                        # 创建图片元素
-                                        image_element = create_image_element(r_id, width, height)
-                                        
-                                        # 构建标准文档结构
-                                        p = OxmlElement('w:p')
-                                        r = OxmlElement('w:r')
-                                        drawing = OxmlElement('w:drawing')
-                                        drawing.append(image_element)
-                                        
-                                        # 组装结构
-                                        r.append(drawing)
-                                        p.append(r)
-
-                                        # 插入到文档结构
-                                        parent.clear()
-                                        parent.append(drawing)
-
-                                    except Exception as e:
-                                        print(e)
+                                        os.remove(image_file_path)
                                 else:
                                     element.text = element.text.replace(
                                         "{{" + key + "}}", value, 1)
@@ -456,39 +469,45 @@ def export_to_doc(app_token, personal_base_token, table_id, record_id, info_json
                                             height = None
 
                                         if info_json[key] != "":
-                                            extra = {
-                                                "bitablePerm": {
-                                                    "tableId": table_id,
-                                                    "attachments": {
-                                                        field_id_map[key]: {
-                                                            record_id:
-                                                            [info_json[key]]
+                                            for value_item in info_json[key]:
+                                                file_token = value_item.get("file_token")
+                                                name = value_item.get("name")
+                                                extra = {
+                                                    "bitablePerm": {
+                                                        "tableId": table_id,
+                                                        "attachments": {
+                                                            field_id_map[key]: {
+                                                                record_id:
+                                                                [file_token]
+                                                            }
                                                         }
                                                     }
                                                 }
-                                            }
-                                            attachment_resp = BaseClass(
-                                            ).download_attachment(
-                                                personal_base_token, info_json[key],
-                                                extra)
-                                            # print(attachment_resp)
+                                                attachment_resp = BaseClass(
+                                                ).download_attachment(
+                                                    personal_base_token, file_token,
+                                                    extra)
+                                                # print(attachment_resp)
+                                                
+                                                image_file_path = os.path.join(personal_main_path, name)
+                                                with open(image_file_path,
+                                                        'wb') as file:
+                                                    file.write(
+                                                        attachment_resp.content)
+                                                file.close()
 
-                                            with open(image_file_path,
-                                                      'wb') as file:
-                                                file.write(
-                                                    attachment_resp.content)
-                                            file.close()
+                                                try:
+                                                    paragraph.add_run(
+                                                    ).add_picture(
+                                                        image_file_path,
+                                                        width=Cm(width),
+                                                        height=Cm(height))
+                                                    # print(paragraph.text)
+                                                except Exception as e:
+                                                    paragraph.add_run(
+                                                    ).add_picture(image_file_path)
 
-                                            try:
-                                                paragraph.add_run(
-                                                ).add_picture(
-                                                    image_file_path,
-                                                    width=Cm(width),
-                                                    height=Cm(height))
-                                                # print(paragraph.text)
-                                            except Exception as e:
-                                                paragraph.add_run(
-                                                ).add_picture(image_file_path)
+                                                os.remove(image_file_path)
 
                                         run.text = ""
 
@@ -835,7 +854,7 @@ def delete_files_in_directory(directory):
 
 
 
-## 删除所有模板文件接口
+## 删除模板文件接口
 @app.route('/delete_templates', methods=['POST'])
 def delete_file():
     """
