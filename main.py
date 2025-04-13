@@ -834,8 +834,34 @@ def delete_files_in_directory(directory):
         print(e)
 
 
+
+## 删除所有模板文件接口
+@app.route('/delete_templates', methods=['POST'])
+def delete_file():
+    """
+    删除 template_files 文件夹下对应的 personal_base_token 下的所有模板文件
+    """
+
+    result_msg = "模板文件及缓存已经删除"
+    
+    saved_info = dict(request.form.lists()).get("saved_info")[0]
+    saved_info_split = saved_info.split("_")
+    template_file_path = os.path.join(app.config['UPLOAD_FOLDER'], saved_info_split[0], saved_info_split[2], saved_info_split[3])
+    # print(template_file_path)
+
+    try:
+        delete_files_in_directory(template_file_path)
+        os.rmdir(template_file_path)
+    except Exception as e:
+        print(e)
+        pass
+
+
+    return result_msg
+
+
 ## 上传模板文件接口
-@app.route('/upload_template', methods=['GET', 'POST'])
+@app.route('/upload_template', methods=['POST'])
 def upload_file():
     """
     上传文件到 template_files 文件夹下对应的 personal_base_token 下
@@ -848,7 +874,7 @@ def upload_file():
 
     # print(file_list)
 
-    print(dict(request.form.lists()))
+    # print(dict(request.form.lists()))
     personal_base_token = dict(request.form.lists()).get("personal_base_token")[0]
     app_token = dict(request.form.lists()).get("app_token")[0]
     table_id = dict(request.form.lists()).get("table_id")[0]

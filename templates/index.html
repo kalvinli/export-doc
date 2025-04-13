@@ -59,23 +59,29 @@
             background-color: #2196F3;
         }
 
+        .delete-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            font-size: 16px;
+            color: #fff;
+            background-color: #ff0000;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            width: 260px;
+    
+        }
+
+        .delete-btn:hover {
+            background-color: #ff3c00;
+        }
+
 
     </style>
 </head>
 <body>
-    <!-- <div class="upload-container">
-        <form id="fileUploadForm" action="/upload_template" method="post" enctype="multipart/form-data">
-            多维表格授权码：<input type="text" class="input_text" id="personal_base_token" name="personal_base_token" value="">
-            模板文件：<input type="file" class="upload-input" id="filePicker" name="filePicker" accept=".docx">
-            <input class="upload-btn" type="submit" value="上传模板文件">
-        </form>
-    </div> -->
     <div class="upload-container">
-        <span style="color: #FF0000;font-weight:bolder;">缓存信息</span>
-        <select class="input_text" id="saved_info" name="saved_info">
-            <option label="————请选择缓存信息————" value=""></option>
-        </select>
-        <hr />
         <form id="fileUploadForm" action="/upload_template" method="post" enctype="multipart/form-data">
             <!-- 参数列表 -->
             <b>多维表格授权码</b>
@@ -97,8 +103,19 @@
             <!-- 原文件上传部分 -->
             <b>模板文件上传</b>
             <input type="file" class="upload-input" id="filePicker" name="filePicker" accept=".docx">
-            <p style="text-align:center;width: 100%;"><input class="upload-btn" type="submit" value="上传模板文件并生成参数"></p>
-            
+            <p style="text-align:center;width: 100%;">
+                <input class="upload-btn" type="submit" value="上传模板文件并生成参数">
+            </p>
+        </form>
+        <hr />
+        <form id="deleteTemplatesForm" action="/delete_templates" method="post" enctype="multipart/form-data">
+            <span style="color: #FF0000;font-weight:bolder;">模板缓存信息</span>
+            <select class="input_text" id="saved_info" name="saved_info">
+                <option label="————请选择模板缓存信息————" value=""></option>
+            </select>
+            <p style="text-align:center;width: 100%;">
+                <input class="delete-btn" type="submit" value="删除模板文件">
+            </p>
         </form>
     </div>
     <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
@@ -190,6 +207,17 @@
             // 输出所有项的列表
             // console.log(localStorageItems);
         };
+
+        document.getElementById('deleteTemplatesForm').addEventListener('submit', function(event) {
+            const saved_info = document.getElementById('saved_info').value;
+            if (saved_info !== "") {
+                // console.log(saved_info)
+                localStorage.removeItem(saved_info);
+            } else {
+                alert('请选择模板缓存信息');
+                event.preventDefault();
+            }
+        });
 
         document.getElementById('fileUploadForm').addEventListener('submit', function(event) {
             const personal_base_token = document.getElementById('personal_base_token').value;
