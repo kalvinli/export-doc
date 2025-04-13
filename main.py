@@ -20,30 +20,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from base_class.base_api import BaseClass
 from base_class.generator import generate_qrcode, generate_barcode
 
-# 配置命名空间
-nsmap.update({
-    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
-    "pic": "http://schemas.openxmlformats.org/drawingml/2006/picture",
-    "wpc": "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas",
-    "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
-    "o": "urn:schemas-microsoft-com:office:office",
-    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-    "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
-    "image": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
-    "v": "urn:schemas-microsoft-com:vml",
-    "wp14": "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
-    "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
-    "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-    "w14": "http://schemas.microsoft.com/office/word/2010/wordml",
-    "w10": "urn:schemas-microsoft-com:office:word",
-    "w15": "http://schemas.microsoft.com/office/word/2012/wordml",
-    "wpg": "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
-    "wpi": "http://schemas.microsoft.com/office/word/2010/wordprocessingInk",
-    "wne": "http://schemas.microsoft.com/office/word/2006/wordml",
-    "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
-    "wpsCustomData": "http://www.wps.cn/officeDocument/2013/wpsCustomData"
-})
-
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config['JSON_AS_ASCII'] = False
@@ -70,13 +46,13 @@ app.config['GENERATE_FOLDER'] = GENERATE_FOLDER
 
 
 ## 基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中
-def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
-                  file_name, file_field, field_id_map, file_type):
+def export_to_doc(app_token, personal_base_token, table_id, record_id, info_json,
+                  file_name, file_field, field_id_map, file_type, template_file_type):
     '''
         基于上传的模板将多维表格中的记录数据导出到word文件，并回传到当前记录的附件字段中\r\n
         pramas:\r\n
         - app_token: 多维表格ID\r\n
-        - personal_token: 多维表格授权码\r\n
+        - personal_base_token: 多维表格授权码\r\n
         - table_id: 数据表ID\r\n
         - record_id: 记录ID\r\n
         - info_json: 字段名与字段值的映射\r\n
@@ -87,6 +63,31 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
     '''
 
     msg = "生成附件成功"
+
+    
+    # 配置命名空间
+    nsmap.update({
+        "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        "image": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+        "pic": "http://schemas.openxmlformats.org/drawingml/2006/picture",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        "wpc": "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas",
+        "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+        "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        "v": "urn:schemas-microsoft-com:vml",
+        "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+        # "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
+        # "o": "urn:schemas-microsoft-com:office:office",
+        # "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
+        # "wp14": "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
+        # "w14": "http://schemas.microsoft.com/office/word/2010/wordml",
+        # "w10": "urn:schemas-microsoft-com:office:word",
+        # "w15": "http://schemas.microsoft.com/office/word/2012/wordml",
+        # "wpg": "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
+        # "wpi": "http://schemas.microsoft.com/office/word/2010/wordprocessingInk",
+        # "wne": "http://schemas.microsoft.com/office/word/2006/wordml",
+        # "wpsCustomData": "http://www.wps.cn/officeDocument/2013/wpsCustomData"
+    })
 
     # print(info_json)
     # print("*"*30)
@@ -100,17 +101,20 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
     # print(info_json)
     # print("*"*30)
 
-    # 多维表格主目录
-    main_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token)
+    # 每个多维表格主路径
+    main_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_base_token)
     # print(str(main_path))
     # print("*"*30)
 
+    # 每个多维表格数据表主路径
+    table_main_path = os.path.join(main_path, table_id)
+
     # 模板文件路径
-    template_file_path = os.path.join(main_path, "template.docx")
+    template_file_path = os.path.join(table_main_path, template_file_type, "template.docx")
     # print(template_file_path)
 
     # 临时生成的主目录，以file_name为文件夹名
-    personal_main_path = os.path.join(main_path, file_name)
+    personal_main_path = os.path.join(table_main_path, file_name)
     # print(personal_main_path)
 
     # 临时生成的word文件路径
@@ -137,6 +141,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
 
     # 从模板文件创建一个副本文件
     shutil.copy(template_file_path, target_file_path)
+
 
     # 基于副本文件初始化一个文档实例
     doc = Document(target_file_path)
@@ -207,7 +212,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
                                     }
                                 }
                                 attachment_resp = BaseClass(
-                                ).download_attachment(personal_token, value,
+                                ).download_attachment(personal_base_token, value,
                                                       extra)
                                 # print(attachment_resp)
 
@@ -358,7 +363,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
                                     }
                                     attachment_resp = BaseClass(
                                     ).download_attachment(
-                                        personal_token, value, extra)
+                                        personal_base_token, value, extra)
                                     # print(attachment_resp)
 
                                     # 将二进制流信息写入到生成印章的图片附件中
@@ -464,7 +469,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
                                             }
                                             attachment_resp = BaseClass(
                                             ).download_attachment(
-                                                personal_token, info_json[key],
+                                                personal_base_token, info_json[key],
                                                 extra)
                                             # print(attachment_resp)
 
@@ -647,7 +652,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
 
     multi_form = MultipartEncoder(req_body)
     # 上传附件到多维表格空间
-    response = BaseClass().upload_all(personal_token, multi_form)
+    response = BaseClass().upload_all(personal_base_token, multi_form)
     # print(response)
     file.close()
 
@@ -664,7 +669,7 @@ def export_to_doc(app_token, personal_token, table_id, record_id, info_json,
         # print(record_list)
 
         # 更新多维表格记录
-        response = BaseClass().batch_update_record(app_token, personal_token,
+        response = BaseClass().batch_update_record(app_token, personal_base_token,
                                                    table_id, record_list)
         # print(response)
         if response.get("code") == 0:
@@ -833,50 +838,75 @@ def delete_files_in_directory(directory):
 @app.route('/upload_template', methods=['GET', 'POST'])
 def upload_file():
     """
-    上传文件到 template_files 文件夹下对应的 personal_token 下
+    上传文件到 template_files 文件夹下对应的 personal_base_token 下
     """
 
     if 'filePicker' not in request.files:
         return "不存在文件组件"
 
-    # print(request.files)
     file_list = dict(request.files.lists()).get("filePicker")
 
     # print(file_list)
 
-    personal_token = dict(request.form.lists()).get("personal_token")[0]
-    # print(personal_token)
-    if personal_token == "":
+    print(dict(request.form.lists()))
+    personal_base_token = dict(request.form.lists()).get("personal_base_token")[0]
+    app_token = dict(request.form.lists()).get("app_token")[0]
+    table_id = dict(request.form.lists()).get("table_id")[0]
+    template_file_type = dict(request.form.lists()).get("template_file_type")[0]
+    file_type = dict(request.form.lists()).get("file_type")[0]
+    file_field = dict(request.form.lists()).get("file_field")[0]
+
+    # print(personal_base_token)
+    if personal_base_token == "":
         return "多维表格授权码不能为空"
 
     result_msg = ""
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_token)
-    # print(file_path)
 
-    if not os.path.exists(file_path):
-        os.mkdir(file_path)
+    # 每个多维表格主路径
+    main_path = os.path.join(app.config['UPLOAD_FOLDER'], personal_base_token)
+    # print(str(main_path))
+    # print("*"*30)
+    if not os.path.exists(main_path):
+        os.mkdir(main_path)
+
+    # 每个多维表格数据表主路径
+    table_main_path = os.path.join(main_path, table_id)
+    if not os.path.exists(table_main_path):
+        os.mkdir(table_main_path)
+
+    # 模板文件主路径
+    template_file_path = os.path.join(table_main_path, template_file_type)
+    # print(template_file_path)
+    if not os.path.exists(template_file_path):
+        os.mkdir(template_file_path)
     else:
-        delete_files_in_directory(file_path)
+        delete_files_in_directory(template_file_path)
 
     for file in file_list:
-        # print(file)
-        # print(1, file.filename)
         if file.filename == '':
             return '没有选择模板文件'
-        # elif file.filename != 'template.docx':
-        #     return '模板文件名必须为 template.docx'
 
         if file and allowed_file(file.filename):
             filename = "template.docx"
             try:
-                file.save(
-                    os.path.join(app.config['UPLOAD_FOLDER'], personal_token,
-                                 filename))
+                file.save(os.path.join(template_file_path, filename))
                 result_msg = result_msg + 'template file uploaded successfully<br><br>'
                 server_url = request.headers.get("Origin")
                 identifier = str(uuid.uuid1())
                 # print(identifier)
-                result_msg = result_msg + server_url + "/generate_attachment?identifier=" + identifier
+
+                url = server_url + "/generate_attachment?identifier=" + identifier
+                body = {
+                    "personal_base_token": personal_base_token,
+                    "app_token": app_token,
+                    "table_id": table_id,
+                    "file_field": file_field,
+                    "file_type": file_type,
+                    "template_file_type": template_file_type,
+                    "record_id": "请在自动化流程中配置第一步触发记录的记录ID",
+                    "file_name": "请在自动化流程配置第一步触发记录的唯一名称字段"
+                }
+                result_msg = result_msg + "请求URL:<br>" + url + "<br><br>请求体：<br>" + json.dumps(body, ensure_ascii=False)
             except Exception as e:
                 # print(e)
                 result_msg = result_msg + 'template file uploaded Fail<br>'
@@ -901,13 +931,15 @@ def generate_attachment():
     except Exception as e:
         return {"msg": -1, "code": "请求参数错误"}
 
-    app_token = request_body.get("app_token", None)
+    
     personal_base_token = request_body.get("personal_base_token", None)
+    app_token = request_body.get("app_token", None)
     table_id = request_body.get("table_id", None)
     record_id = request_body.get("record_id", None)
     file_name = request_body.get("file_name", None)
     file_field = request_body.get("file_field", None)
     file_type = request_body.get("file_type", None)
+    template_file_type = request_body.get("template_file_type", "default")
 
     if app_token is None or personal_base_token is None or table_id is None or record_id is None or file_field is None or file_name is None:
         return {"msg": -1, "code": "请求参数为空"}
@@ -952,7 +984,7 @@ def generate_attachment():
         try:
             msg = export_to_doc(app_token, personal_base_token, table_id,
                                 record_id, field_list, file_name, file_field,
-                                field_id_map, file_type)
+                                field_id_map, file_type, template_file_type)
             # result_msg = "生成附件成功"
             result_msg = msg
 

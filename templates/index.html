@@ -18,10 +18,10 @@
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             overflow: hidden;
-            text-align: center;
+            text-align: left;
         }
 
-        .auth-input {
+        .input_text {
             width: 100%;
             padding: 10px;
             font-size: 16px;
@@ -51,7 +51,7 @@
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s ease;
-            width: 200px;
+            width: 260px;
     
         }
      
@@ -63,29 +63,165 @@
     </style>
 </head>
 <body>
-    <div class="upload-container">
+    <!-- <div class="upload-container">
         <form id="fileUploadForm" action="/upload_template" method="post" enctype="multipart/form-data">
-            多维表格授权码：<input type="text" class="auth-input" id="personal_token" name="personal_token" value="">
+            多维表格授权码：<input type="text" class="input_text" id="personal_base_token" name="personal_base_token" value="">
             模板文件：<input type="file" class="upload-input" id="filePicker" name="filePicker" accept=".docx">
             <input class="upload-btn" type="submit" value="上传模板文件">
         </form>
+    </div> -->
+    <div class="upload-container">
+        <span style="color: #FF0000;font-weight:bolder;">缓存信息</span>
+        <select class="input_text" id="saved_info" name="saved_info">
+            <option label="————请选择缓存信息————" value=""></option>
+        </select>
+        <hr />
+        <form id="fileUploadForm" action="/upload_template" method="post" enctype="multipart/form-data">
+            <!-- 参数列表 -->
+            <b>多维表格授权码</b>
+            <input type="text" class="input_text" id="personal_base_token" name="personal_base_token" value="">
+            <b>多维表格 ID</b>
+            <input type="text" class="input_text" id="app_token" name="app_token" value="" readonly>
+            <b>数据表 ID</b>
+            <input type="text" class="input_text" id="table_id" name="table_id" value="" readonly>
+            <b>导出写入的附件字段</b>
+            <select class="input_text" id="file_field" name="file_field"></select>
+            <!-- 文件类型单选 -->
+            <b>导出文件类型</b>
+            <select class="input_text" id="file_type" name="file_type">
+                <option value="docx" selected>docx</option>
+                <option value="pdf">pdf</option>
+            </select>
+            <b>模板文件类别</b>
+            <input type="text" class="input_text"  id="template_file_type" name="template_file_type" value="default">
+            <!-- 原文件上传部分 -->
+            <b>模板文件上传</b>
+            <input type="file" class="upload-input" id="filePicker" name="filePicker" accept=".docx">
+            <p style="text-align:center;width: 100%;"><input class="upload-btn" type="submit" value="上传模板文件并生成参数"></p>
+            
+        </form>
     </div>
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    <script  type="module" defer>
+        import { bitable } from "{{ url_for('static', filename='js/js-sdk@0.2.4.min.js') }}";
+           
+        let selection = await bitable.base.getSelection();
+        let baseId = selection.baseId;
+        let tableId = selection.tableId;
+        let viewId = selection.viewId;
+
+        document.getElementById('app_token').value = baseId;
+        document.getElementById('table_id').value = tableId;
+
+        $(function(){
+            function escapeHTML(html) {
+                return html.replace(/[&<>"'/]/g, function(match) {
+                    switch (match) {
+                    case '&': return '&amp;';
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '"': return '&quot;';
+                    case "'": return `'`;
+                    case '/': return '/';
+                    default: return match;
+                    }
+                });
+            }
+
+            $(async () => {
+                const table = await bitable.base.getTableById(tableId);
+                let fieldMetaList = await table.getFieldMetaList();
+
+                fieldMetaList.forEach((item) => {
+                    if(item.type === 17) {
+                        const rawName = item.name;
+                        const escapedName = escapeHTML(rawName);
+                        $("#file_field").append('<option label="'+escapedName+'" data-name="'+escapedName+'" value="'+escapedName+'"></option>');
+                    }
+                })
+            });
+            
+            $("#saved_info").change(function() {
+                const saved_info = localStorage.getItem($("#saved_info")[0].value);
+                if (saved_info) {
+                    let saved_info_json = JSON.parse(saved_info)
+
+                    const personal_base_token = document.getElementById('personal_base_token');
+                    const app_token = document.getElementById('app_token');
+                    const table_id = document.getElementById('table_id');
+                    const file_field = document.getElementById('file_field');
+                    const file_type = document.getElementById('file_type');
+                    const template_file_type = document.getElementById('template_file_type');
+
+                    personal_base_token.value = saved_info_json['personal_base_token'];
+                    app_token.value = saved_info_json['app_token'];
+                    table_id.value = saved_info_json['table_id'];
+                    file_field.value = saved_info_json['file_field'];
+                    file_type.value = saved_info_json['file_type'];
+                    template_file_type.value = saved_info_json['template_file_type'];
+                }
+            })
+        });
+
+    </script>
     <script>
         // 页面加载时检查本地缓存
         window.onload = function () {
-            const personalTokenInput = document.getElementById('personal_token');
-            const savedToken = localStorage.getItem('personal_token');
-            if (savedToken) {
-                personalTokenInput.value = savedToken;
+            const personal_base_token = document.getElementById('personal_base_token');
+
+            const saved_personal_base_token = localStorage.getItem('personal_base_token');
+            if (saved_personal_base_token) {
+                personal_base_token.value = saved_personal_base_token;
             }
+
+            let count = localStorage.length;
+            // let localStorageItems = [];
+            for (let i = 0; i < count; i++) {
+                let key = localStorage.key(i);
+                let value = localStorage.getItem(key);
+                // localStorageItems.push({ key: key, value: value });
+                key_split = key.split("_")
+                if (key_split.length == 4 && key_split[0] == saved_personal_base_token) {
+                    // console.log(i+1, key_split[3]);
+                    $("#saved_info").append('<option label="' + key_split[3] + '" value="' + key + '"></option>');
+                }
+            }
+            
+            // 输出所有项的列表
+            // console.log(localStorageItems);
         };
 
         document.getElementById('fileUploadForm').addEventListener('submit', function(event) {
-            const personalToken = document.getElementById('personal_token').value;
+            const personal_base_token = document.getElementById('personal_base_token').value;
+            const app_token = document.getElementById('app_token').value;
+            const table_id = document.getElementById('table_id').value;
+            const file_field = document.getElementById('file_field').value;
+            const file_type = document.getElementById('file_type').value;
+            const template_file_type = document.getElementById('template_file_type').value;
             const filePicker = document.getElementById('filePicker').files[0];
 
-            if (personalToken === '') {
+            if (personal_base_token === '') {
                 alert('多维表格授权码不能为空！');
+                event.preventDefault();
+
+            } else if (app_token === '') {
+                alert('多维表格 ID 不能为空！');
+                event.preventDefault();
+
+            } else if (table_id === '') {
+                alert('数据表 ID 不能为空！');
+                event.preventDefault();
+
+            } else if (file_field === '') {
+                alert('导出写入的附件字段不能为空！');
+                event.preventDefault();
+
+            } else if (file_type === '') {
+                alert('导出文件类型不能为空！');
+                event.preventDefault();
+
+            } else if (template_file_type === '') {
+                alert('模板文件类别不能为空！');
                 event.preventDefault();
 
             } else if (!filePicker) {
@@ -93,8 +229,21 @@
                 event.preventDefault();
 
             } else {
-                // 表单提交成功时，将授权码保存到本地缓存
-                localStorage.setItem('personal_token', personalToken);
+                // 表单提交成功时，将字段值保存到本地缓存
+                let saved_json = {
+                    personal_base_token: personal_base_token,
+                    app_token: app_token,
+                    table_id: table_id,
+                    file_field: file_field,
+                    file_type: file_type,
+                    template_file_type: template_file_type,
+                };
+
+                // console.log(saved_json);
+
+                let saved_key = personal_base_token + "_" + app_token + "_" + table_id + "_" + template_file_type
+                localStorage.setItem(saved_key, JSON.stringify(saved_json));
+                localStorage.setItem("personal_base_token", personal_base_token);
             }
         });
 
